@@ -3224,11 +3224,11 @@ terraform import <resource-address> <aws-resource-id>
 
 ## Documentation
 
-- [Quick Start Guide](../specs/001-aws-minecraft-infrastructure/quickstart.md)
-- [Data Model](../specs/001-aws-minecraft-infrastructure/data-model.md)
-- [Variable Schema](../specs/001-aws-minecraft-infrastructure/contracts/variables-schema.md)
-- [Research & Decisions](../specs/001-aws-minecraft-infrastructure/research.md)
-- [Implementation Plan](../specs/001-aws-minecraft-infrastructure/plan.md)
+- [Quick Start Guide](specs/001-aws-minecraft-infrastructure/quickstart.md)
+- [Data Model](specs/001-aws-minecraft-infrastructure/data-model.md)
+- [Variable Schema](specs/001-aws-minecraft-infrastructure/contracts/variables-schema.md)
+- [Research & Decisions](specs/001-aws-minecraft-infrastructure/research.md)
+- [Implementation Plan](specs/001-aws-minecraft-infrastructure/plan.md)
 
 ## License
 

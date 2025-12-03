@@ -3224,11 +3224,1028 @@ terraform import <resource-address> <aws-resource-id>
 
 ## Documentation
 
-- [Quick Start Guide](specs/001-aws-minecraft-infrastructure/quickstart.md)
-- [Data Model](specs/001-aws-minecraft-infrastructure/data-model.md)
-- [Variable Schema](specs/001-aws-minecraft-infrastructure/contracts/variables-schema.md)
-- [Research & Decisions](specs/001-aws-minecraft-infrastructure/research.md)
-- [Implementation Plan](specs/001-aws-minecraft-infrastructure/plan.md)
+### Quick Start Guide
+
+**Date**: 2024-12-19  
+**Feature**: AWS Minecraft Server Infrastructure  
+**Purpose**: Step-by-step guide to deploy the Minecraft server infrastructure
+
+#### Prerequisites
+
+**Required Tools**:
+- **Terraform** >= 1.0 installed ([Installation Guide](https://developer.hashicorp.com/terraform/downloads))
+- **AWS CLI** >= 2.0 installed and configured ([Installation Guide](https://aws.amazon.com/cli/))
+- **AWS Account** with appropriate permissions
+- **Git** (for cloning repository)
+
+**AWS Permissions Required**:
+The AWS credentials must have permissions to create:
+- VPC, Subnets, Route Tables, Internet Gateway, NAT Gateway
+- ECS Cluster, Task Definitions, Services
+- EFS File Systems, Mount Targets
+- ElastiCache Redis Clusters
+- Application Load Balancer, Target Groups, Listeners
+- Global Accelerator
+- Security Groups
+- IAM Roles and Policies
+- Secrets Manager secrets (if creating)
+
+**AWS Service Quotas**:
+Ensure your AWS account has sufficient quotas:
+- VPCs per region: At least 1
+- NAT Gateways per AZ: At least 1
+- ECS tasks: At least 10 (for scaling)
+- ElastiCache clusters: At least 1
+
+#### Step 1: Clone and Navigate
+
+```bash
+# Clone the repository (if applicable)
+git clone <repository-url>
+cd minecraft/terraform
+
+# Or navigate to terraform directory if already cloned
+cd terraform
+```
+
+#### Step 2: Configure AWS Credentials
+
+```bash
+# Option 1: AWS CLI configuration
+aws configure
+
+# Option 2: Environment variables
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_DEFAULT_REGION="sa-east-1"
+
+# Option 3: AWS SSO (if using)
+aws sso login --profile your-profile
+export AWS_PROFILE="your-profile"
+```
+
+**Verify credentials**:
+```bash
+aws sts get-caller-identity
+```
+
+#### Step 3: Configure Terraform Backend (Optional but Recommended)
+
+Edit `backend.tf` or create `backend.hcl`:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket         = "your-terraform-state-bucket"
+    key            = "minecraft/infrastructure.tfstate"
+    region         = "sa-east-1"
+    encrypt        = true
+    dynamodb_table = "terraform-state-lock"
+  }
+}
+```
+
+**Create S3 bucket and DynamoDB table** (if not exists):
+```bash
+# Create S3 bucket
+aws s3 mb s3://your-terraform-state-bucket --region sa-east-1
+aws s3api put-bucket-versioning \
+  --bucket your-terraform-state-bucket \
+  --versioning-configuration Status=Enabled
+
+# Create DynamoDB table for state locking
+aws dynamodb create-table \
+  --table-name terraform-state-lock \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --region sa-east-1
+```
+
+#### Step 4: Create Redis Auth Token Secret
+
+```bash
+# Generate a secure random token
+REDIS_TOKEN=$(openssl rand -base64 32)
+
+# Create secret in AWS Secrets Manager
+aws secretsmanager create-secret \
+  --name minecraft/redis/auth-token \
+  --secret-string "$REDIS_TOKEN" \
+  --region sa-east-1 \
+  --description "Redis authentication token for Minecraft server"
+```
+
+**Note**: If you skip this step, Terraform will attempt to create the secret automatically (requires additional permissions).
+
+#### Step 5: Configure Variables
+
+Copy the example variables file:
+```bash
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Edit `terraform.tfvars` with your values:
+
+```hcl
+# Required: Docker image for Minecraft server
+container_image = "itzg/minecraft-server:latest"
+
+# Optional: Override defaults
+aws_region      = "sa-east-1"
+environment     = "production"
+desired_count   = 1
+task_cpu        = 2048      # 2 vCPU
+task_memory     = 4096      # 4GB
+
+# Redis configuration
+redis_node_type     = "cache.t3.micro"
+redis_replica_count = 1
+
+# Redis auth token secret (created in Step 4)
+redis_auth_token_secret_name = "minecraft/redis/auth-token"
+
+# Tags
+tags = {
+  Project     = "minecraft"
+  Environment = "production"
+  ManagedBy   = "terraform"
+  CostCenter  = "gaming"
+}
+```
+
+#### Step 6: Initialize Terraform
+
+```bash
+terraform init
+```
+
+**Expected output**:
+```
+Initializing the backend...
+Initializing provider plugins...
+- Finding hashicorp/aws versions matching "~> 5.0"...
+- Installing hashicorp/aws v5.x.x...
+...
+Terraform has been successfully initialized!
+```
+
+#### Step 7: Review Plan
+
+```bash
+terraform plan
+```
+
+**Review the plan carefully**:
+- Verify all resources to be created
+- Check resource names and tags
+- Verify CIDR blocks don't conflict with existing networks
+- Note estimated costs (NAT Gateway, ALB, Global Accelerator have hourly charges)
+
+**Save plan for review** (optional):
+```bash
+terraform plan -out=tfplan
+terraform show tfplan
+```
+
+#### Step 8: Deploy Infrastructure
+
+```bash
+terraform apply
+```
+
+**Or use saved plan**:
+```bash
+terraform apply tfplan
+```
+
+**Terraform will prompt**:
+```
+Do you want to perform these actions?
+  Terraform will perform the actions described above.
+  Only 'yes' will be accepted to approve.
+
+  Enter a value: yes
+```
+
+**Deployment time**: Approximately 10-15 minutes
+- VPC and networking: ~2 minutes
+- EFS: ~3 minutes
+- ElastiCache Redis: ~10 minutes (slowest)
+- ECS cluster and service: ~5 minutes
+- ALB and Global Accelerator: ~3 minutes
+
+#### Step 9: Verify Deployment
+
+**Check Terraform Outputs**:
+
+```bash
+terraform output
+```
+
+**Expected outputs**:
+- `minecraft_endpoint`: Public endpoint for players
+- `redis_endpoint`: Redis cluster endpoint
+- `efs_dns_name`: EFS DNS name
+- `vpc_id`: VPC ID
+- `ecs_cluster_id`: ECS cluster ID
+
+**Verify ECS Service**:
+
+```bash
+# Get ECS cluster name
+CLUSTER_NAME=$(terraform output -raw ecs_cluster_id | cut -d'/' -f2)
+
+# Check service status
+aws ecs describe-services \
+  --cluster $CLUSTER_NAME \
+  --services minecraft-server \
+  --region sa-east-1
+
+# Check running tasks
+aws ecs list-tasks \
+  --cluster $CLUSTER_NAME \
+  --region sa-east-1
+```
+
+**Test Minecraft Server Connection**:
+
+```bash
+# Get endpoint
+ENDPOINT=$(terraform output -raw minecraft_endpoint)
+
+# Test connection (Minecraft uses TCP port 25565)
+nc -zv $ENDPOINT 25565
+
+# Or use Minecraft client to connect
+# Server Address: $ENDPOINT
+# Port: 25565
+```
+
+#### Step 10: Access Container (Troubleshooting)
+
+**Using AWS Systems Manager Session Manager**:
+
+```bash
+# Get task ID
+TASK_ID=$(aws ecs list-tasks \
+  --cluster $CLUSTER_NAME \
+  --region sa-east-1 \
+  --query 'taskArns[0]' \
+  --output text | cut -d'/' -f3)
+
+# Start session
+aws ecs execute-command \
+  --cluster $CLUSTER_NAME \
+  --task $TASK_ID \
+  --container minecraft-server \
+  --command "/bin/sh" \
+  --interactive \
+  --region sa-east-1
+```
+
+**Note**: Requires ECS Exec enabled in task definition and proper IAM permissions.
+
+#### Common Issues and Solutions
+
+**Issue: NAT Gateway Creation Fails**
+
+**Error**: `Error creating NAT Gateway: InsufficientAddressesInSubnet`
+
+**Solution**: Ensure public subnet has available IP addresses. Use smaller CIDR blocks or create additional subnets.
+
+**Issue: ElastiCache Creation Takes Too Long**
+
+**Error**: ElastiCache cluster creation times out
+
+**Solution**: This is normal - ElastiCache can take 10-15 minutes. Wait for completion or check AWS Console.
+
+**Issue: ECS Task Fails to Start**
+
+**Error**: Task stops immediately after starting
+
+**Solution**:
+1. Check CloudWatch Logs: `aws logs tail /ecs/minecraft-server --follow`
+2. Verify container image exists and is accessible
+3. Check EFS mount: Ensure EFS security group allows NFS from ECS security group
+4. Verify task has sufficient CPU/memory
+
+**Issue: Cannot Connect to Minecraft Server**
+
+**Error**: Connection timeout
+
+**Solution**:
+1. Verify ALB security group allows inbound TCP 25565 from 0.0.0.0/0
+2. Check ECS task is running: `aws ecs describe-tasks --cluster <cluster> --tasks <task-id>`
+3. Verify target group health: Check ALB target group in AWS Console
+4. Check Global Accelerator status (if enabled)
+
+#### Next Steps
+
+**Configure Minecraft Server**:
+
+1. **Access server files** via EFS mount or Session Manager
+2. **Edit server.properties** (if mounted)
+3. **Add plugins/mods** to plugins/ or mods/ directory
+4. **Restart ECS service** to apply changes:
+   ```bash
+   aws ecs update-service \
+     --cluster $CLUSTER_NAME \
+     --service minecraft-server \
+     --force-new-deployment \
+     --region sa-east-1
+   ```
+
+**Monitor Infrastructure**:
+
+- **CloudWatch Logs**: `/ecs/minecraft-server`
+- **CloudWatch Metrics**: ECS service metrics, ALB metrics
+- **Cost Monitoring**: AWS Cost Explorer, tag-based filtering
+
+**Scale Infrastructure**:
+
+Edit `terraform.tfvars`:
+```hcl
+desired_count = 3  # Increase number of containers
+```
+
+Apply changes:
+```bash
+terraform apply
+```
+
+#### Cleanup (Destroy Infrastructure)
+
+**Warning**: This will delete all resources including persistent storage (world data).
+
+```bash
+# Review what will be destroyed
+terraform plan -destroy
+
+# Destroy infrastructure
+terraform destroy
+```
+
+**To preserve world data**:
+1. Backup EFS before destroy: `aws efs create-backup --file-system-id <efs-id>`
+2. Or manually copy files from EFS before destroy
+
+#### Additional Resources
+
+- **Terraform AWS Provider Documentation**: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
+- **ECS Fargate Documentation**: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html
+- **Minecraft Server Docker Image**: https://hub.docker.com/r/itzg/minecraft-server
+- **AWS Global Accelerator**: https://docs.aws.amazon.com/global-accelerator/
+
+---
+
+### Data Model
+
+**Date**: 2024-12-19  
+**Feature**: AWS Minecraft Server Infrastructure  
+**Purpose**: Define Terraform resource structures and data relationships
+
+#### Overview
+
+This infrastructure project uses Terraform to define AWS resources. The "data model" here represents the Terraform resource structures, variable schemas, and output definitions that compose the infrastructure.
+
+#### Core Resource Entities
+
+**VPC Network**:
+
+**Purpose**: Virtual network containing all infrastructure components
+
+**Terraform Resource**: `aws_vpc`
+
+**Attributes**:
+- `cidr_block`: VPC CIDR range (default: 10.0.0.0/16)
+- `enable_dns_hostnames`: true
+- `enable_dns_support`: true
+- `tags`: Project, Environment, ManagedBy
+
+**Relationships**:
+- Contains: Subnets (public and private)
+- Has: Internet Gateway (public)
+- Has: NAT Gateway (private subnets)
+- Has: Route Tables
+
+**Subnets**:
+
+**Purpose**: Network isolation zones across multiple Availability Zones
+
+**Terraform Resource**: `aws_subnet`
+
+**Types**:
+1. **Public Subnets** (for NAT Gateway, Load Balancer)
+   - `map_public_ip_on_launch`: true
+   - Route: Internet Gateway
+   
+2. **Private Subnets** (for ECS tasks, Redis, EFS)
+   - `map_public_ip_on_launch`: false
+   - Route: NAT Gateway
+
+**Attributes**:
+- `availability_zone`: One per AZ (minimum 2 AZs)
+- `cidr_block`: Subnet CIDR (e.g., 10.0.1.0/24, 10.0.2.0/24)
+- `vpc_id`: Reference to VPC
+
+**Constraints**:
+- Minimum 2 Availability Zones for high availability
+- Public subnets: 2+ (one per AZ)
+- Private subnets: 2+ (one per AZ)
+
+**Security Groups**:
+
+**Purpose**: Network-level access control
+
+**Terraform Resource**: `aws_security_group`
+
+**Types**:
+1. **ALB Security Group**
+   - Inbound: TCP 25565 (Minecraft) from 0.0.0.0/0
+   - Outbound: All traffic
+
+2. **ECS Task Security Group**
+   - Inbound: TCP 25565 from ALB security group
+   - Inbound: TCP 6379 (Redis) from Redis security group
+   - Outbound: All traffic (via NAT Gateway)
+
+3. **Redis Security Group**
+   - Inbound: TCP 6379 from ECS task security group
+   - Outbound: None
+
+4. **EFS Security Group**
+   - Inbound: NFS (2049) from ECS task security group
+   - Outbound: None
+
+**ECS Cluster**:
+
+**Purpose**: Container orchestration platform
+
+**Terraform Resource**: `aws_ecs_cluster`
+
+**Attributes**:
+- `name`: Cluster name
+- `capacity_providers`: ["FARGATE", "FARGATE_SPOT"]
+- `default_capacity_provider_strategy`: Fargate
+
+**Relationships**:
+- Contains: ECS Services
+- Uses: Private subnets
+- Uses: EFS for storage
+
+**ECS Task Definition**:
+
+**Purpose**: Container specification and resource allocation
+
+**Terraform Resource**: `aws_ecs_task_definition`
+
+**Attributes**:
+- `family`: Task definition family name
+- `network_mode`: awsvpc
+- `requires_compatibilities`: ["FARGATE"]
+- `cpu`: 2048 (2 vCPU, default)
+- `memory`: 4096 (4GB, default)
+- `execution_role_arn`: IAM role for ECS agent
+- `task_role_arn`: IAM role for container
+- `container_definitions`: JSON definition
+
+**ECS Service**:
+
+**Purpose**: Maintains desired number of running tasks
+
+**Terraform Resource**: `aws_ecs_service`
+
+**Attributes**:
+- `name`: Service name
+- `cluster`: ECS cluster reference
+- `task_definition`: Task definition reference
+- `desired_count`: Number of tasks (default: 1)
+- `launch_type`: FARGATE
+- `network_configuration`: Subnets, security groups
+- `load_balancer`: ALB target group configuration
+- `deployment_configuration`: Rolling update settings
+
+**EFS File System**:
+
+**Purpose**: Persistent shared storage for world data
+
+**Terraform Resource**: `aws_efs_file_system`
+
+**Attributes**:
+- `creation_token`: Unique identifier
+- `performance_mode`: generalPurpose
+- `throughput_mode`: bursting
+- `encrypted`: true
+- `tags`: Resource tags
+
+**Relationships**:
+- Has: Mount Targets (one per AZ)
+- Has: Access Points (optional)
+- Used by: ECS Tasks
+
+**ElastiCache Redis Cluster**:
+
+**Purpose**: Caching and state management
+
+**Terraform Resource**: `aws_elasticache_replication_group`
+
+**Attributes**:
+- `replication_group_id`: Cluster identifier
+- `description`: Cluster description
+- `node_type`: cache.t3.micro
+- `port`: 6379
+- `parameter_group_name`: Redis parameter group
+- `num_cache_clusters`: 2 (1 primary + 1 replica)
+- `automatic_failover_enabled`: true
+- `multi_az_enabled`: true
+- `at_rest_encryption_enabled`: true
+- `transit_encryption_enabled`: true
+- `auth_token`: From Secrets Manager
+- `subnet_group_name`: ElastiCache subnet group
+- `security_group_ids`: Redis security group
+
+**Application Load Balancer**:
+
+**Purpose**: Distributes player traffic to ECS tasks
+
+**Terraform Resource**: `aws_lb`
+
+**Attributes**:
+- `name`: ALB name
+- `internal`: false (public)
+- `load_balancer_type`: application
+- `subnets`: Public subnet IDs
+- `security_groups`: ALB security group
+- `enable_deletion_protection`: false (for terraform destroy)
+
+**Global Accelerator**:
+
+**Purpose**: Optimizes routing for low latency
+
+**Terraform Resource**: `aws_globalaccelerator_accelerator`
+
+**Attributes**:
+- `name`: Accelerator name
+- `ip_address_type`: IPV4
+- `enabled`: true
+
+#### Variable Schema
+
+**Root Module Variables**:
+
+**Required Variables**:
+- `aws_region`: AWS region (default: "sa-east-1")
+- `container_image`: Docker image for Minecraft server
+
+**Optional Variables**:
+- `vpc_cidr`: VPC CIDR block (default: "10.0.0.0/16")
+- `environment`: Environment name (default: "production")
+- `desired_count`: ECS service desired count (default: 1)
+- `task_cpu`: Task CPU units (default: 2048)
+- `task_memory`: Task memory MB (default: 4096)
+- `redis_node_type`: ElastiCache node type (default: "cache.t3.micro")
+- `redis_replica_count`: Redis replica count (default: 1)
+- `efs_performance_mode`: EFS performance mode (default: "generalPurpose")
+- `enable_global_accelerator`: Enable Global Accelerator (default: true)
+- `tags`: Additional resource tags (default: {})
+
+**Secret Variables** (via data sources):
+- Redis auth token: Retrieved from Secrets Manager
+- Container registry credentials: Retrieved from Secrets Manager (if needed)
+
+#### Output Schema
+
+**Root Module Outputs**:
+
+**Connection Information**:
+- `minecraft_endpoint`: Public endpoint (ALB DNS or Global Accelerator IP)
+- `redis_endpoint`: ElastiCache Redis endpoint
+- `efs_dns_name`: EFS DNS name for mounting
+
+**Resource IDs**:
+- `vpc_id`: VPC ID
+- `ecs_cluster_id`: ECS cluster ID
+- `ecs_service_id`: ECS service ID
+- `alb_arn`: Application Load Balancer ARN
+- `redis_cluster_id`: ElastiCache cluster ID
+- `efs_id`: EFS file system ID
+
+**Network Information**:
+- `public_subnet_ids`: List of public subnet IDs
+- `private_subnet_ids`: List of private subnet IDs
+- `security_group_ids`: Map of security group IDs by name
+
+#### Data Flow
+
+1. **Player Connection Flow**:
+   - Player → Global Accelerator → ALB → Target Group → ECS Task (port 25565)
+
+2. **Container Storage Access**:
+   - ECS Task → EFS Mount Target → EFS File System
+
+3. **Cache Access**:
+   - ECS Task → Redis Security Group → ElastiCache Redis Cluster
+
+4. **Administrative Access**:
+   - DevOps Engineer → Systems Manager Session Manager → ECS Task
+
+5. **Outbound Internet Access**:
+   - ECS Task → NAT Gateway → Internet Gateway → Internet
+
+---
+
+### Variable Schema
+
+**Date**: 2024-12-19  
+**Feature**: AWS Minecraft Server Infrastructure  
+**Purpose**: Define all Terraform input variables and their contracts
+
+#### Root Module Variables
+
+**`aws_region`**:
+- **Type**: `string`
+- **Default**: `"sa-east-1"`
+- **Description**: AWS region for resource deployment
+- **Constraints**: Must be valid AWS region identifier
+- **Example**: `"sa-east-1"`, `"us-east-1"`
+
+**`container_image`**:
+- **Type**: `string`
+- **Required**: Yes
+- **Description**: Docker image URI for Minecraft server container
+- **Constraints**: Must be valid Docker image reference (ECR, Docker Hub, etc.)
+- **Example**: `"itzg/minecraft-server:latest"`, `"123456789012.dkr.ecr.sa-east-1.amazonaws.com/minecraft:1.20.1"`
+
+**`vpc_cidr`**:
+- **Type**: `string`
+- **Default**: `"10.0.0.0/16"`
+- **Description**: CIDR block for VPC
+- **Constraints**: Must be valid IPv4 CIDR notation, /16 or larger
+- **Example**: `"10.0.0.0/16"`, `"172.16.0.0/16"`
+
+**`environment`**:
+- **Type**: `string`
+- **Default**: `"production"`
+- **Description**: Environment name (used for resource naming and tagging)
+- **Constraints**: Lowercase alphanumeric and hyphens only
+- **Example**: `"production"`, `"staging"`, `"development"`
+
+**`desired_count`**:
+- **Type**: `number`
+- **Default**: `1`
+- **Description**: Desired number of ECS tasks to run
+- **Constraints**: Integer >= 1
+- **Example**: `1`, `3`, `10`
+
+**`task_cpu`**:
+- **Type**: `number`
+- **Default**: `2048`
+- **Description**: CPU units for ECS task (1024 = 1 vCPU)
+- **Constraints**: Must be valid Fargate CPU value: 256, 512, 1024, 2048, 4096
+- **Example**: `1024` (1 vCPU), `2048` (2 vCPU), `4096` (4 vCPU)
+
+**`task_memory`**:
+- **Type**: `number`
+- **Default**: `4096`
+- **Description**: Memory in MB for ECS task
+- **Constraints**: Must be valid Fargate memory value, compatible with CPU
+- **Example**: `2048` (2GB), `4096` (4GB), `8192` (8GB)
+
+**`redis_node_type`**:
+- **Type**: `string`
+- **Default**: `"cache.t3.micro"`
+- **Description**: ElastiCache Redis node instance type
+- **Constraints**: Must be valid ElastiCache node type
+- **Example**: `"cache.t3.micro"`, `"cache.t3.small"`, `"cache.t3.medium"`
+
+**`redis_replica_count`**:
+- **Type**: `number`
+- **Default**: `1`
+- **Description**: Number of Redis replica nodes
+- **Constraints**: Integer >= 0 (0 = no replication, 1+ = high availability)
+- **Example**: `0`, `1`, `2`
+
+**`efs_performance_mode`**:
+- **Type**: `string`
+- **Default**: `"generalPurpose"`
+- **Description**: EFS performance mode
+- **Constraints**: Must be `"generalPurpose"` or `"maxIO"`
+- **Example**: `"generalPurpose"` (recommended), `"maxIO"` (for high throughput)
+
+**`enable_global_accelerator`**:
+- **Type**: `bool`
+- **Default**: `true`
+- **Description**: Enable AWS Global Accelerator for low-latency routing
+- **Constraints**: Boolean
+- **Example**: `true` (recommended for South America), `false` (lower cost)
+
+**`tags`**:
+- **Type**: `map(string)`
+- **Default**: `{}`
+- **Description**: Additional tags to apply to all resources
+- **Constraints**: Map of string key-value pairs
+- **Example**: `{ CostCenter = "gaming", Team = "devops" }`
+
+**`redis_auth_token_secret_name`**:
+- **Type**: `string`
+- **Default**: `null`
+- **Description**: AWS Secrets Manager secret name containing Redis auth token
+- **Constraints**: Must exist in Secrets Manager, or null to auto-generate
+- **Example**: `"minecraft/redis/auth-token"`
+
+**`minecraft_server_port`**:
+- **Type**: `number`
+- **Default**: `25565`
+- **Description**: Minecraft server port
+- **Constraints**: Integer between 1-65535
+- **Example**: `25565` (standard), `25566` (custom)
+
+**`enable_deletion_protection`**:
+- **Type**: `bool`
+- **Default**: `false`
+- **Description**: Enable deletion protection on ALB (prevents accidental deletion)
+- **Constraints**: Boolean
+- **Example**: `true` (production), `false` (development, allows terraform destroy)
+
+#### Output Contracts
+
+**Root Module Outputs**:
+
+**`minecraft_endpoint`**:
+- **Type**: `string`
+- **Description**: Public endpoint for Minecraft server connection
+- **Format**: DNS name or IP address
+- **Example**: `"minecraft.example.com"` or `"1.2.3.4"`
+
+**`redis_endpoint`**:
+- **Type**: `string`
+- **Description**: ElastiCache Redis cluster endpoint
+- **Format**: `{cluster-id}.cache.amazonaws.com:6379`
+- **Example**: `"minecraft-redis.abc123.cache.sa-east-1.amazonaws.com:6379"`
+
+**`efs_dns_name`**:
+- **Type**: `string`
+- **Description**: EFS DNS name for mounting
+- **Format**: `{file-system-id}.efs.{region}.amazonaws.com`
+- **Example**: `"fs-12345678.efs.sa-east-1.amazonaws.com"`
+
+**`vpc_id`**:
+- **Type**: `string`
+- **Description**: VPC ID
+- **Format**: `vpc-{hexadecimal}`
+- **Example**: `"vpc-0123456789abcdef0"`
+
+**`ecs_cluster_id`**:
+- **Type**: `string`
+- **Description**: ECS cluster ID/ARN
+- **Format**: `arn:aws:ecs:{region}:{account}:cluster/{name}`
+- **Example**: `"arn:aws:ecs:sa-east-1:123456789012:cluster/minecraft-cluster"`
+
+---
+
+### Research & Decisions
+
+**Date**: 2024-12-19  
+**Feature**: AWS Minecraft Server Infrastructure  
+**Purpose**: Resolve technical unknowns and document architectural decisions
+
+#### 1. ECS Fargate vs EC2 Launch Type
+
+**Decision**: ECS Fargate
+
+**Rationale**:
+- Serverless container execution eliminates EC2 instance management overhead
+- Automatic scaling and patching reduce operational burden
+- Better cost efficiency for variable workloads
+- No need to manage EC2 instances, AMIs, or instance types
+- Fargate tasks can be placed in private subnets with NAT Gateway for outbound access
+- Compatible with EFS for persistent storage
+
+**Alternatives Considered**:
+- EC2 launch type: Provides more control and potentially lower cost at scale, but requires instance management, patching, and capacity planning
+- EKS: Overkill for single Minecraft server deployment, adds unnecessary complexity
+
+#### 2. Public Entrypoint: Global Accelerator + ALB vs Alternatives
+
+**Decision**: Application Load Balancer with AWS Global Accelerator
+
+**Rationale**:
+- Global Accelerator provides optimal routing via AWS backbone network for lowest latency
+- Stable static IP addresses (anycast) improve connection reliability
+- ALB provides health checks, SSL termination, and request routing
+- ALB integrates seamlessly with ECS Fargate services
+- Global Accelerator automatically routes to nearest healthy endpoint
+- Cost-effective for gaming workloads with predictable traffic patterns
+
+**Alternatives Considered**:
+- ALB only: Simpler and lower cost, but lacks global routing optimization
+- Network Load Balancer + Global Accelerator: Lower latency for UDP traffic, but ALB sufficient for Minecraft TCP connections
+- Public IP directly on container: Simplest but no load balancing, less reliable, violates private subnet isolation
+
+#### 3. Storage: EFS vs EBS for Fargate
+
+**Decision**: Amazon EFS
+
+**Rationale**:
+- EFS is the only network-backed storage option compatible with Fargate
+- EBS volumes cannot be directly attached to Fargate tasks
+- EFS provides shared storage across multiple containers (useful for scaling)
+- Automatic scaling without manual provisioning
+- Supports concurrent access from multiple containers
+- Pay-per-use pricing model
+
+**Alternatives Considered**:
+- EBS volumes: Not compatible with Fargate, would require EC2 launch type
+- S3: Not suitable for file system access patterns required by Minecraft server
+
+**EFS Configuration**:
+- Performance mode: General Purpose (suitable for small files, metadata operations)
+- Throughput mode: Bursting (cost-effective for variable workloads)
+- Encryption: At-rest encryption enabled
+- Lifecycle management: Not required for active game server data
+
+#### 4. Redis Cluster Configuration
+
+**Decision**: ElastiCache Redis Cluster Mode Enabled, 1 primary + 1 replica, cache.t3.micro
+
+**Rationale**:
+- Cluster Mode Enabled provides high availability and supports future scaling
+- Replication ensures failover capability if primary node fails
+- cache.t3.micro is cost-effective for initial deployments (can be scaled via variables)
+- Cluster mode allows horizontal scaling by adding shards
+- Encryption in-transit and at-rest for security compliance
+
+**Alternatives Considered**:
+- Single-node Redis: Simpler but no high availability, single point of failure
+- Multi-shard cluster: Higher cost and complexity, not needed for initial deployment
+- Redis Serverless: Newer offering, auto-scaling, but may have compatibility concerns with existing Redis clients
+
+**Configuration Details**:
+- Node type: cache.t3.micro (0.5 vCPU, 0.5GB RAM) - suitable for caching/state management
+- Replication: 1 replica for high availability
+- Cluster mode: Enabled for future scalability
+- Auth token: Required, stored in AWS Secrets Manager
+- Subnet group: Private subnets only
+
+#### 5. Container Resource Sizing
+
+**Decision**: 2 vCPU, 4GB RAM (default, configurable via variables)
+
+**Rationale**:
+- Balanced cost/performance ratio
+- Suitable for 20-50 concurrent Minecraft players per container
+- Fargate pricing is reasonable at this tier
+- Can scale horizontally by adding more tasks
+- Memory sufficient for Minecraft server + JVM overhead
+- CPU allows for smooth gameplay without lag
+
+**Alternatives Considered**:
+- 1 vCPU, 2GB RAM: Lower cost but may struggle with 10+ concurrent players
+- 4 vCPU, 8GB RAM: Higher performance but significantly higher cost, overkill for initial deployment
+
+**Scaling Strategy**:
+- Horizontal scaling via ECS service desired_count
+- Vertical scaling via task definition CPU/memory changes
+- Auto-scaling policies can be added later
+
+#### 6. Administrative Access Method
+
+**Decision**: AWS Systems Manager Session Manager
+
+**Rationale**:
+- No open SSH ports required (improves security posture)
+- IAM-based access control (no SSH key management)
+- Audit logging of all sessions
+- Works with Fargate containers via SSM agent
+- No need for bastion hosts or VPN
+- Integrated with AWS CloudTrail for compliance
+
+**Alternatives Considered**:
+- Bastion host: Traditional approach but requires SSH key management and open ports
+- No SSH access: Immutable containers, but limits troubleshooting capabilities
+- VPN: Overkill for single infrastructure deployment
+
+**Configuration Requirements**:
+- ECS task execution role must have SSM permissions
+- SSM agent installed in container image (or use AWS-provided base images)
+- IAM policies for Session Manager access
+
+#### 7. Terraform Module Structure
+
+**Decision**: Separate modules for VPC, ECS, storage, cache, and networking
+
+**Rationale**:
+- Follows Terraform best practices for code organization
+- Modules are independently testable and reusable
+- Clear separation of concerns
+- Easier to maintain and update individual components
+- Supports composition and flexibility
+
+**Module Responsibilities**:
+- **vpc**: VPC, subnets, route tables, Internet Gateway, NAT Gateway, security groups
+- **ecs**: ECS cluster, task definitions, services, IAM roles
+- **storage**: EFS file system, mount targets, access points
+- **cache**: ElastiCache subnet group, Redis cluster, parameter group
+- **networking**: Application Load Balancer, target groups, Global Accelerator, listeners
+
+#### 8. Secret Management Strategy
+
+**Decision**: AWS Secrets Manager for sensitive data, Parameter Store for non-sensitive configuration
+
+**Rationale**:
+- Secrets Manager provides automatic rotation capabilities
+- Encryption at rest and in transit
+- IAM-based access control
+- Audit trail via CloudTrail
+- Parameter Store for non-sensitive config (lower cost)
+- No hard-coded secrets in Terraform code
+
+**Implementation**:
+- Redis auth token: Secrets Manager
+- Container image credentials: Secrets Manager (if using private registry)
+- Minecraft server configuration: Parameter Store (non-sensitive)
+- Terraform data sources to retrieve secrets at apply time
+
+#### 9. Resource Tagging Strategy
+
+**Decision**: Consistent tagging across all resources with project, environment, and cost-center tags
+
+**Rationale**:
+- Enables cost tracking and allocation
+- Supports resource organization and filtering
+- Required for compliance and governance
+- Facilitates automated resource management
+
+**Tag Schema**:
+- `Project`: minecraft-server
+- `Environment`: production/staging/dev
+- `ManagedBy`: terraform
+- `CostCenter`: [optional]
+- `CreatedBy`: [user/CI system]
+
+#### 10. Terraform State Management
+
+**Decision**: Remote state backend (S3 + DynamoDB for state locking)
+
+**Rationale**:
+- Enables team collaboration
+- State locking prevents concurrent modifications
+- Backup and versioning via S3
+- Required for production infrastructure
+
+**Configuration**:
+- S3 bucket for state storage (encrypted)
+- DynamoDB table for state locking
+- Backend configuration in terraform block
+
+**Summary**: All technical decisions have been made based on AWS best practices, cost optimization, security requirements, and operational simplicity. The architecture leverages managed AWS services (Fargate, EFS, ElastiCache, ALB, Global Accelerator) to minimize operational overhead while ensuring scalability, security, and low latency for players in South America.
+
+---
+
+### Implementation Plan
+
+**Branch**: `001-aws-minecraft-infrastructure` | **Date**: 2024-12-19
+
+#### Summary
+
+Deploy a production-ready, containerized Minecraft server infrastructure on AWS using Terraform. The infrastructure includes a VPC with public/private subnets across multiple AZs, ECS Fargate cluster running Minecraft containers, EFS for persistent storage, ElastiCache Redis cluster, Application Load Balancer with Global Accelerator for low-latency player connections, and comprehensive security controls. The Terraform project follows best practices with modular structure, parameterized variables, proper secret management, and clean resource lifecycle management.
+
+**Research Complete**: All technical decisions documented. Key decisions: ECS Fargate (serverless), ALB + Global Accelerator (low latency), EFS (Fargate-compatible storage), Redis Cluster Mode with replication (HA), Systems Manager Session Manager (secure access).
+
+#### Technical Context
+
+**Language/Version**: Terraform >= 1.0, HCL2  
+**Primary Dependencies**: AWS Provider >= 5.0, Terraform modules for VPC, ECS, EFS, ElastiCache, ALB, Global Accelerator  
+**Storage**: Amazon EFS (for Fargate-compatible persistent storage), ElastiCache Redis (for caching/state)  
+**Testing**: terraform validate, terraform plan (dry-run), terratest or kitchen-terraform for integration tests  
+**Target Platform**: AWS (sa-east-1 region), Linux containers (Fargate)  
+**Project Type**: Infrastructure-as-Code (Terraform modules)  
+**Performance Goals**: <50ms latency for players in Brazil, 99.9% uptime during updates, support 20-50 concurrent players per container instance, scale to 10+ container instances  
+**Constraints**: No hard-coded secrets, clean terraform destroy removes all resources, EFS storage supports up to 100GB growth, containers isolated in private subnets with NAT Gateway for outbound access  
+**Scale/Scope**: Modular Terraform project with 5+ modules (VPC, ECS, storage, cache, networking), configurable via variables, reusable for other game server deployments
+
+#### Project Structure
+
+**Source Code (repository root)**:
+
+```text
+terraform/
+├── main.tf                 # Root module - orchestrates all sub-modules
+├── variables.tf            # Input variables with defaults
+├── outputs.tf              # Output values (endpoints, IDs, etc.)
+├── terraform.tfvars.example # Example variable values
+├── versions.tf             # Provider version constraints
+│
+├── modules/
+│   ├── vpc/                # VPC module
+│   ├── ecs/                # ECS Fargate module
+│   ├── storage/            # EFS storage module
+│   ├── cache/              # ElastiCache Redis module
+│   └── networking/         # ALB + Global Accelerator module
+```
+
+**Structure Decision**: Modular Terraform project structure with separate modules for each major component (VPC, ECS, storage, cache, networking). This follows Terraform best practices for reusability, maintainability, and separation of concerns. Each module is independently testable and can be reused in other infrastructure projects.
 
 ## License
 

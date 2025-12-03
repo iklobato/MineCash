@@ -1492,6 +1492,789 @@ See `terraform.tfvars.example` for all available variables. Key variables:
 
 See `terraform/variables.tf` for complete variable definitions with types, defaults, descriptions, and validation rules.
 
+## Minecraft Server Configuration
+
+This section documents all possible Minecraft server configuration parameters. The infrastructure uses the `itzg/minecraft-server` Docker image, which supports extensive configuration via environment variables and the `server.properties` file.
+
+### Introduction
+
+The Minecraft server can be configured in two ways:
+
+1. **Environment Variables**: Passed via ECS task definition, automatically applied by the container image
+2. **Direct File Editing**: Edit `server.properties` file stored in EFS at `/data/server.properties` (persists across container restarts)
+
+**Configuration File Location**: `/data/server.properties` (mounted from EFS, accessible from all containers)
+
+**Important**: Changes to `server.properties` require a server restart to take effect. Environment variables are applied when the container starts.
+
+### Currently Configured Parameters
+
+The following parameters are currently set in the ECS task definition (see `terraform/modules/ecs/task-definition.json.tpl`):
+
+**Required Configuration**:
+- `EULA=TRUE`: Accepts Minecraft End User License Agreement (required for server to start)
+
+**Infrastructure Integration**:
+- `REDIS_HOST`: Redis cluster endpoint hostname (from infrastructure)
+- `REDIS_PORT`: Redis port (default: 6379, from infrastructure)
+- `REDIS_AUTH`: Redis authentication token (from AWS Secrets Manager)
+
+### Environment Variables Reference
+
+The `itzg/minecraft-server` Docker image supports many environment variables for server configuration. These override `server.properties` settings when provided.
+
+#### Server Type & Version
+
+| Variable | Description | Example Values | Default |
+|----------|-------------|----------------|---------|
+| `TYPE` | Server type/implementation | `VANILLA`, `SPIGOT`, `PAPER`, `FORGE`, `FABRIC`, `QUILT` | `VANILLA` |
+| `VERSION` | Minecraft version | `LATEST`, `1.20.1`, `1.19.4`, `1.18.2` | `LATEST` |
+| `PAPERBUILD` | Paper build number (if TYPE=PAPER) | `latest`, `1234` | `latest` |
+| `FORGEVERSION` | Forge version (if TYPE=FORGE) | `latest`, `43.2.0` | `latest` |
+
+**Example**:
+```hcl
+# Use Paper server for better performance
+environment = [
+  { name = "TYPE", value = "PAPER" },
+  { name = "VERSION", value = "1.20.1" }
+]
+```
+
+#### Server Properties (Override server.properties)
+
+| Variable | Description | Example Values | Default |
+|----------|-------------|----------------|---------|
+| `MOTD` | Message of the Day (displayed in server list) | `"Welcome to My Server!"` | `"A Minecraft Server"` |
+| `SERVER_NAME` | Server name | `"My Minecraft Server"` | `"Minecraft Server"` |
+| `MAX_PLAYERS` | Maximum number of players | `20`, `50`, `100` | `20` |
+| `VIEW_DISTANCE` | View distance in chunks | `8`, `10`, `12`, `16` | `10` |
+| `SIMULATION_DISTANCE` | Simulation distance in chunks | `8`, `10`, `12` | `10` |
+| `DIFFICULTY` | Difficulty level | `peaceful`, `easy`, `normal`, `hard` | `easy` |
+| `GAMEMODE` | Default gamemode | `survival`, `creative`, `adventure`, `spectator` | `survival` |
+| `FORCE_GAMEMODE` | Force gamemode on join | `true`, `false` | `false` |
+| `PVP` | Enable player vs player | `true`, `false` | `true` |
+| `ONLINE_MODE` | Verify players with Mojang | `true`, `false` | `true` |
+| `WHITELIST` | Enable whitelist | `true`, `false` | `false` |
+| `ENABLE_COMMAND_BLOCK` | Enable command blocks | `true`, `false` | `false` |
+| `MAX_WORLD_SIZE` | Maximum world size | `29999984` | `29999984` |
+| `ALLOW_NETHER` | Allow Nether dimension | `true`, `false` | `true` |
+| `GENERATE_STRUCTURES` | Generate structures | `true`, `false` | `true` |
+| `GENERATOR_SETTINGS` | Generator settings (JSON) | `"{}"` | `""` |
+| `LEVEL_SEED` | World seed | `"1234567890"`, `""` (random) | `""` |
+| `LEVEL_TYPE` | World type | `DEFAULT`, `FLAT`, `LARGEBIOMES`, `AMPLIFIED`, `CUSTOMIZED` | `DEFAULT` |
+| `LEVEL_NAME` | World name/directory | `"world"`, `"myworld"` | `"world"` |
+| `MAX_TICK_TIME` | Maximum tick time (ms) | `60000` | `60000` |
+| `MAX_BUILD_HEIGHT` | Maximum build height | `320` | `320` |
+| `SPAWN_MONSTERS` | Spawn monsters | `true`, `false` | `true` |
+| `SPAWN_ANIMALS` | Spawn animals | `true`, `false` | `true` |
+| `SPAWN_NPCS` | Spawn NPCs | `true`, `false` | `true` |
+| `ALLOW_FLIGHT` | Allow flight | `true`, `false` | `false` |
+| `ENABLE_RCON` | Enable RCON (remote console) | `true`, `false` | `false` |
+| `RCON_PASSWORD` | RCON password | `"mypassword"` | `""` |
+| `RCON_PORT` | RCON port | `25575` | `25575` |
+| `ENABLE_QUERY` | Enable query protocol | `true`, `false` | `false` |
+| `QUERY_PORT` | Query port | `25565` | `25565` |
+| `SERVER_PORT` | Server port | `25565` | `25565` |
+| `RESOURCE_PACK` | Resource pack URL | `"https://example.com/pack.zip"` | `""` |
+| `RESOURCE_PACK_PROMPT` | Resource pack prompt | `"Install resource pack?"` | `""` |
+| `RESOURCE_PACK_SHA1` | Resource pack SHA1 hash | `"abc123..."` | `""` |
+
+#### Performance & Resource Management
+
+| Variable | Description | Example Values | Default |
+|----------|-------------|----------------|---------|
+| `MEMORY` | JVM memory allocation | `"2G"`, `"4096M"`, `"8G"` | `"1G"` |
+| `JVM_OPTS` | Additional JVM options | `"-XX:+UseG1GC"` | `""` |
+| `JVM_XX_OPTS` | Additional JVM XX options | `"-XX:MaxGCPauseMillis=200"` | `""` |
+| `USE_AIKAR_FLAGS` | Use Aikar's optimized JVM flags | `true`, `false` | `false` |
+
+**Memory Configuration**:
+- `MEMORY` sets JVM heap size (e.g., `"4G"` = 4GB heap)
+- ECS `task_memory` must be larger than `MEMORY` (leave ~512MB-1GB for OS and JVM overhead)
+- Recommended: `MEMORY = (task_memory - 1024)M` (leave 1GB headroom)
+
+**Example**:
+```hcl
+# For task_memory = 4096 (4GB), use MEMORY = "3G"
+environment = [
+  { name = "MEMORY", value = "3G" },
+  { name = "USE_AIKAR_FLAGS", value = "true" }
+]
+```
+
+#### World & Data Management
+
+| Variable | Description | Example Values | Default |
+|----------|-------------|----------------|---------|
+| `WORLD` | World name/directory | `"world"`, `"myworld"` | `"world"` |
+| `OVERRIDE_WORLD` | Override world on restart | `true`, `false` | `false` |
+| `OVERRIDE_ICON` | Override server icon | `true`, `false` | `false` |
+| `WORLD_BACKUP` | Enable world backups | `true`, `false` | `false` |
+| `BACKUP_INTERVAL` | Backup interval (minutes) | `60`, `120`, `240` | `0` (disabled) |
+| `BACKUP_RETENTION` | Number of backups to retain | `5`, `10`, `20` | `0` |
+
+#### Plugins & Mods
+
+| Variable | Description | Example Values | Default |
+|----------|-------------|----------------|---------|
+| `PLUGINS` | Comma-separated plugin URLs | `"https://example.com/plugin.jar"` | `""` |
+| `MODS` | Comma-separated mod URLs | `"https://example.com/mod.jar"` | `""` |
+| `REMOVE_OLD_MODS` | Remove old mods on update | `true`, `false` | `false` |
+| `REMOVE_OLD_MODS_DEPTH` | Depth to search for old mods | `1`, `2` | `1` |
+
+#### Backup & Maintenance
+
+| Variable | Description | Example Values | Default |
+|----------|-------------|----------------|---------|
+| `ENABLE_AUTOPAUSE` | Pause server when no players | `true`, `false` | `false` |
+| `AUTOPAUSE_TIMEOUT_EST` | Estimated autopause timeout (seconds) | `180` | `180` |
+| `AUTOPAUSE_TIMEOUT_KN` | Known autopause timeout (seconds) | `120` | `120` |
+| `AUTOPAUSE_TIMEOUT_INIT` | Initial autopause timeout (seconds) | `600` | `600` |
+
+#### Advanced Configuration
+
+| Variable | Description | Example Values | Default |
+|----------|-------------|----------------|---------|
+| `OVERRIDE_SERVER_PROPERTIES` | Override server.properties completely | `true`, `false` | `false` |
+| `ENABLE_ROLLING_LOGS` | Enable rolling logs | `true`, `false` | `false` |
+| `LOG_TIMESTAMP` | Add timestamps to logs | `true`, `false` | `false` |
+| `REPLACE_ENV_VARIABLES` | Replace env vars in files | `true`, `false` | `false` |
+| `REPLACE_ENV_VARIABLES_PREFIX` | Prefix for env var replacement | `"${"` | `"${"` |
+
+### server.properties File Configuration
+
+The `server.properties` file is stored in EFS at `/data/server.properties` and persists across container restarts. You can edit this file directly or use environment variables (which override file settings).
+
+**File Location**: `/data/server.properties` (accessible via EFS mount)
+
+**Key Settings**:
+
+**Server Identification**:
+- `server-name`: Server name displayed in server list
+- `motd`: Message of the Day shown to players
+- `server-port`: Port the server listens on (default: 25565)
+
+**World Settings**:
+- `level-name`: World directory name (default: "world")
+- `level-seed`: World generation seed (empty = random)
+- `level-type`: World type (DEFAULT, FLAT, LARGEBIOMES, AMPLIFIED, CUSTOMIZED)
+- `generate-structures`: Generate structures like villages (true/false)
+- `generator-settings`: JSON generator settings
+
+**Gameplay Settings**:
+- `gamemode`: Default gamemode (survival, creative, adventure, spectator)
+- `force-gamemode`: Force gamemode on join (true/false)
+- `difficulty`: Difficulty level (peaceful, easy, normal, hard)
+- `pvp`: Enable player vs player (true/false)
+- `max-players`: Maximum players allowed
+- `view-distance`: View distance in chunks (4-32, default: 10)
+- `simulation-distance`: Simulation distance in chunks (4-32, default: 10)
+- `spawn-monsters`: Spawn monsters (true/false)
+- `spawn-animals`: Spawn animals (true/false)
+- `spawn-npcs`: Spawn NPCs (true/false)
+
+**Performance Settings**:
+- `max-tick-time`: Maximum milliseconds per tick (default: 60000)
+- `max-world-size`: Maximum world size (default: 29999984)
+- `max-build-height`: Maximum build height (default: 320)
+- `network-compression-threshold`: Packet compression threshold (default: 256)
+
+**Network Settings**:
+- `online-mode`: Verify players with Mojang (true/false)
+- `server-ip`: IP address to bind to (empty = all interfaces)
+- `enable-query`: Enable query protocol (true/false)
+- `query.port`: Query port (default: 25565)
+- `enable-rcon`: Enable RCON (true/false)
+- `rcon.port`: RCON port (default: 25575)
+- `rcon.password`: RCON password
+
+**Access Control**:
+- `white-list`: Enable whitelist (true/false)
+- `enforce-whitelist`: Enforce whitelist (true/false)
+- `op-permission-level`: OP permission level (1-4, default: 4)
+- `function-permission-level`: Function permission level (1-4, default: 2)
+
+**Other Settings**:
+- `allow-flight`: Allow flight (true/false)
+- `allow-nether`: Allow Nether dimension (true/false)
+- `enable-command-block`: Enable command blocks (true/false)
+- `resource-pack`: Resource pack URL
+- `resource-pack-prompt`: Resource pack prompt message
+- `resource-pack-sha1`: Resource pack SHA1 hash
+- `spawn-protection`: Spawn protection radius (default: 16)
+
+**Editing server.properties**:
+
+1. **Access Container** (see "Accessing Containers" section):
+   ```bash
+   aws ecs execute-command \
+     --cluster <cluster-name> \
+     --task <task-id> \
+     --container minecraft-server \
+     --command "/bin/sh" \
+     --interactive
+   ```
+
+2. **Edit File**:
+   ```bash
+   # View current configuration
+   cat /data/server.properties
+   
+   # Edit with nano or vi
+   nano /data/server.properties
+   ```
+
+3. **Restart Server**: Changes require server restart to take effect
+   - Restart ECS service: `aws ecs update-service --cluster <cluster> --service <service> --force-new-deployment`
+
+### JVM Options Configuration
+
+**Memory Allocation**:
+
+The `MEMORY` environment variable sets JVM heap size. Relationship to ECS task memory:
+
+- **ECS Task Memory**: Total memory allocated to container (includes OS, JVM, and heap)
+- **JVM Heap Memory**: Memory available to Minecraft server (set via `MEMORY` variable)
+- **Recommended**: Leave 512MB-1GB headroom for OS and JVM overhead
+
+**Example Memory Configuration**:
+
+| ECS task_memory | Recommended MEMORY | Headroom |
+|-----------------|-------------------|----------|
+| 2048 MB (2GB) | `"1536M"` or `"1.5G"` | 512 MB |
+| 4096 MB (4GB) | `"3072M"` or `"3G"` | 1024 MB |
+| 8192 MB (8GB) | `"7168M"` or `"7G"` | 1024 MB |
+
+**JVM Flags**:
+
+**Aikar's Flags** (Recommended):
+- Set `USE_AIKAR_FLAGS=true` for optimized JVM flags
+- Includes G1GC settings, optimized for Minecraft servers
+- Automatically configured based on available memory
+
+**Custom JVM Options**:
+- `JVM_OPTS`: Additional JVM options (e.g., `"-XX:+UseG1GC"`)
+- `JVM_XX_OPTS`: Additional JVM XX options (e.g., `"-XX:MaxGCPauseMillis=200"`)
+
+**Performance Tuning**:
+
+**Garbage Collector**:
+- G1GC recommended for Minecraft (enabled by Aikar's flags)
+- Tuned automatically when `USE_AIKAR_FLAGS=true`
+
+**Memory Recommendations by Player Count**:
+
+| Players | Recommended Memory | ECS task_memory |
+|---------|-------------------|-----------------|
+| 10-20 | 2GB | 3072 MB |
+| 20-50 | 4GB | 5120 MB |
+| 50-100 | 8GB | 9216 MB |
+| 100+ | 12GB+ | 13312 MB+ |
+
+### Configuration Methods
+
+#### Method 1: Environment Variables (Terraform)
+
+Add environment variables to the ECS task definition via Terraform:
+
+**Step 1**: Modify task definition template (`terraform/modules/ecs/task-definition.json.tpl`):
+
+```json
+"environment": [
+  {
+    "name": "EULA",
+    "value": "TRUE"
+  },
+  {
+    "name": "REDIS_HOST",
+    "value": "${redis_host}"
+  },
+  {
+    "name": "REDIS_PORT",
+    "value": "${redis_port}"
+  },
+  {
+    "name": "MOTD",
+    "value": "${motd}"
+  },
+  {
+    "name": "MAX_PLAYERS",
+    "value": "${max_players}"
+  },
+  {
+    "name": "MEMORY",
+    "value": "${memory}"
+  },
+  {
+    "name": "USE_AIKAR_FLAGS",
+    "value": "${use_aikar_flags}"
+  }
+]
+```
+
+**Step 2**: Add variables to ECS module (`terraform/modules/ecs/variables.tf`):
+
+```hcl
+variable "motd" {
+  description = "Message of the Day for Minecraft server"
+  type        = string
+  default     = "A Minecraft Server"
+}
+
+variable "max_players" {
+  description = "Maximum number of players"
+  type        = number
+  default     = 20
+}
+
+variable "memory" {
+  description = "JVM memory allocation (e.g., '3G', '4096M')"
+  type        = string
+  default     = null  # Auto-calculated from task_memory
+}
+
+variable "use_aikar_flags" {
+  description = "Use Aikar's optimized JVM flags"
+  type        = bool
+  default     = true
+}
+```
+
+**Step 3**: Pass variables from root module (`terraform/main.tf`):
+
+```hcl
+module "ecs" {
+  source = "./modules/ecs"
+  
+  # ... existing variables ...
+  motd          = var.minecraft_motd
+  max_players   = var.minecraft_max_players
+  memory        = var.minecraft_memory
+  use_aikar_flags = var.minecraft_use_aikar_flags
+}
+```
+
+**Step 4**: Add root variables (`terraform/variables.tf`):
+
+```hcl
+variable "minecraft_motd" {
+  description = "Minecraft server Message of the Day"
+  type        = string
+  default     = "A Minecraft Server"
+}
+
+variable "minecraft_max_players" {
+  description = "Maximum number of players"
+  type        = number
+  default     = 20
+}
+
+variable "minecraft_memory" {
+  description = "JVM memory allocation (e.g., '3G'). If null, auto-calculated from task_memory"
+  type        = string
+  default     = null
+}
+
+variable "minecraft_use_aikar_flags" {
+  description = "Use Aikar's optimized JVM flags"
+  type        = bool
+  default     = true
+}
+```
+
+**Step 5**: Update template file to use variables:
+
+Modify `terraform/modules/ecs/main.tf` to calculate memory if not provided:
+
+```hcl
+locals {
+  # Calculate memory from task_memory if not provided
+  jvm_memory = var.memory != null ? var.memory : "${floor((var.task_memory - 1024) / 1024)}G"
+}
+```
+
+Then update template file to use `jvm_memory` instead of hardcoded value.
+
+#### Method 2: Direct File Editing (EFS)
+
+Edit `server.properties` directly in the mounted EFS volume:
+
+1. **Access Container** (see "Accessing Containers" section)
+
+2. **Edit server.properties**:
+   ```bash
+   # View current configuration
+   cat /data/server.properties
+   
+   # Edit with nano
+   nano /data/server.properties
+   
+   # Example: Change max players
+   # max-players=50
+   ```
+
+3. **Restart Server**:
+   ```bash
+   # Force new deployment to restart server
+   aws ecs update-service \
+     --cluster <cluster-name> \
+     --service <service-name> \
+     --force-new-deployment \
+     --region sa-east-1
+   ```
+
+**Note**: Changes persist across container restarts because `/data` is mounted from EFS.
+
+#### Method 3: Initial Configuration Files
+
+You can provide initial configuration files by mounting them from EFS:
+
+1. **Create Configuration Files Locally**:
+   ```bash
+   # Create server.properties
+   cat > server.properties <<EOF
+   max-players=50
+   motd=Welcome to My Server!
+   difficulty=normal
+   gamemode=survival
+   view-distance=12
+   EOF
+   ```
+
+2. **Upload to EFS** (via container access or EFS mount):
+   ```bash
+   # Access container and copy file
+   cp server.properties /data/server.properties
+   ```
+
+3. **Restart Server**: Configuration will be used on next start
+
+### Common Configuration Examples
+
+#### Small Server (10-20 players)
+
+```hcl
+# terraform.tfvars
+task_memory = 3072  # 3GB
+
+# Environment variables (add to task definition)
+MOTD = "Small Friendly Server"
+MAX_PLAYERS = 20
+MEMORY = "2G"
+VIEW_DISTANCE = 8
+DIFFICULTY = "normal"
+USE_AIKAR_FLAGS = "true"
+```
+
+**server.properties**:
+```properties
+max-players=20
+view-distance=8
+difficulty=normal
+gamemode=survival
+pvp=true
+online-mode=true
+```
+
+#### Medium Server (20-50 players)
+
+```hcl
+# terraform.tfvars
+task_memory = 5120  # 5GB
+
+# Environment variables
+MOTD = "Welcome to Our Server!"
+MAX_PLAYERS = 50
+MEMORY = "4G"
+VIEW_DISTANCE = 10
+DIFFICULTY = "normal"
+USE_AIKAR_FLAGS = "true"
+TYPE = "PAPER"  # Use Paper for better performance
+VERSION = "1.20.1"
+```
+
+**server.properties**:
+```properties
+max-players=50
+view-distance=10
+simulation-distance=10
+difficulty=normal
+gamemode=survival
+pvp=true
+online-mode=true
+spawn-protection=16
+```
+
+#### Large Server (50-100+ players)
+
+```hcl
+# terraform.tfvars
+task_memory = 9216  # 9GB
+desired_count = 2   # Multiple containers for load distribution
+
+# Environment variables
+MOTD = "High Performance Server"
+MAX_PLAYERS = 100
+MEMORY = "8G"
+VIEW_DISTANCE = 12
+SIMULATION_DISTANCE = 10
+DIFFICULTY = "normal"
+USE_AIKAR_FLAGS = "true"
+TYPE = "PAPER"
+VERSION = "1.20.1"
+ENABLE_AUTOPAUSE = "false"  # Keep server running
+```
+
+**server.properties**:
+```properties
+max-players=100
+view-distance=12
+simulation-distance=10
+difficulty=normal
+gamemode=survival
+pvp=true
+online-mode=true
+max-tick-time=60000
+network-compression-threshold=256
+```
+
+#### Creative Server
+
+```hcl
+# Environment variables
+GAMEMODE = "creative"
+FORCE_GAMEMODE = "true"
+ALLOW_FLIGHT = "true"
+ENABLE_COMMAND_BLOCK = "true"
+DIFFICULTY = "peaceful"
+SPAWN_MONSTERS = "false"
+```
+
+**server.properties**:
+```properties
+gamemode=creative
+force-gamemode=true
+allow-flight=true
+enable-command-block=true
+difficulty=peaceful
+spawn-monsters=false
+pvp=false
+```
+
+#### Hardcore Server
+
+```hcl
+# Environment variables
+DIFFICULTY = "hard"
+GAMEMODE = "survival"
+PVP = "true"
+SPAWN_MONSTERS = "true"
+```
+
+**server.properties**:
+```properties
+difficulty=hard
+gamemode=survival
+pvp=true
+spawn-monsters=true
+hardcore=true  # Note: May require server type that supports hardcore mode
+```
+
+#### Paper Server (Performance Optimized)
+
+```hcl
+# Environment variables
+TYPE = "PAPER"
+VERSION = "1.20.1"
+PAPERBUILD = "latest"
+MEMORY = "4G"
+USE_AIKAR_FLAGS = "true"
+VIEW_DISTANCE = 10
+SIMULATION_DISTANCE = 8  # Lower simulation distance for performance
+```
+
+**server.properties** (Paper-specific optimizations):
+```properties
+paper:
+  chunk-loading:
+    autoconfig-send-distance: true
+  world-settings:
+    default:
+      entity-activation-range:
+        animals: 16
+        monsters: 24
+        raiders: 48
+        misc: 8
+```
+
+### Configuration Best Practices
+
+#### Memory Management
+
+**Relationship Between ECS Memory and JVM Memory**:
+- ECS `task_memory`: Total container memory (OS + JVM + heap)
+- JVM `MEMORY`: Heap memory for Minecraft server
+- **Rule of Thumb**: `MEMORY = (task_memory - 1024)M` (leave 1GB for OS/JVM)
+
+**Example**:
+- `task_memory = 4096` (4GB) → `MEMORY = "3G"` (3GB heap, 1GB overhead)
+- `task_memory = 8192` (8GB) → `MEMORY = "7G"` (7GB heap, 1GB overhead)
+
+**Memory by Player Count**:
+- **10-20 players**: 2GB heap (task_memory: 3GB)
+- **20-50 players**: 4GB heap (task_memory: 5GB)
+- **50-100 players**: 8GB heap (task_memory: 9GB)
+- **100+ players**: 12GB+ heap (task_memory: 13GB+)
+
+#### Performance Optimization
+
+**Use Aikar's Flags**:
+- Set `USE_AIKAR_FLAGS=true` for optimized JVM garbage collection
+- Automatically configures G1GC with optimal settings
+- Recommended for all server sizes
+
+**View Distance**:
+- **Small servers (10-20 players)**: 8 chunks
+- **Medium servers (20-50 players)**: 10 chunks
+- **Large servers (50-100+ players)**: 12 chunks
+- **Very large servers**: 14-16 chunks (requires more memory)
+
+**Simulation Distance**:
+- Typically same or lower than view distance
+- Lower values improve performance (fewer entities active)
+- Recommended: 8-10 chunks for most servers
+
+**Use Paper Server**:
+- Set `TYPE=PAPER` for better performance than Vanilla
+- Includes performance optimizations and additional features
+- Recommended for servers with 20+ players
+
+#### Security Considerations
+
+**Online Mode**:
+- `ONLINE_MODE=true`: Verify players with Mojang (recommended for public servers)
+- `ONLINE_MODE=false`: Allow cracked/offline players (security risk)
+
+**Whitelist**:
+- Enable whitelist for private servers: `WHITELIST=true`
+- Manage whitelist via `whitelist.json` in `/data/` directory
+
+**RCON**:
+- Enable RCON for remote administration: `ENABLE_RCON=true`
+- Set strong password: `RCON_PASSWORD=<strong-password>`
+- Store password in AWS Secrets Manager (not in Terraform)
+
+#### Backup & Persistence
+
+**World Backups**:
+- Enable automatic backups: `WORLD_BACKUP=true`, `BACKUP_INTERVAL=60`
+- Backups stored in `/data/backups/` directory (persists in EFS)
+- Configure retention: `BACKUP_RETENTION=10` (keep 10 backups)
+
+**EFS Persistence**:
+- All data in `/data/` directory persists across container restarts
+- Includes: world files, plugins, mods, configurations, backups
+- EFS automatically backs up data (encrypted at rest)
+
+### Troubleshooting Configuration Issues
+
+#### Server Won't Start
+
+**Symptoms**: Container starts but Minecraft server doesn't start
+
+**Solutions**:
+1. **Check EULA**: Ensure `EULA=TRUE` is set
+2. **Check Logs**: `aws logs tail /ecs/minecraft-server --follow`
+3. **Verify Memory**: Ensure `MEMORY` is less than `task_memory - 1024`
+4. **Check Port**: Ensure `SERVER_PORT` matches infrastructure port (25565)
+5. **Verify Image**: Ensure container image exists and is accessible
+
+**Common Errors**:
+- `EULA must be accepted`: Set `EULA=TRUE`
+- `OutOfMemoryError`: Increase `task_memory` or decrease `MEMORY`
+- `Port already in use`: Check if port conflicts (shouldn't happen in containers)
+
+#### Configuration Not Applying
+
+**Symptoms**: Changes to environment variables or server.properties not taking effect
+
+**Solutions**:
+1. **Restart Server**: Force new ECS deployment
+2. **Check Environment Variables**: Verify variables are correctly set in task definition
+3. **Check File Syntax**: Ensure `server.properties` has correct syntax (no typos)
+4. **Verify File Location**: Ensure editing `/data/server.properties` (not `/tmp/`)
+
+**Debugging**:
+```bash
+# Access container
+aws ecs execute-command --cluster <cluster> --task <task> --container minecraft-server --command "/bin/sh" --interactive
+
+# Check environment variables
+env | grep -E "MOTD|MAX_PLAYERS|MEMORY"
+
+# Check server.properties
+cat /data/server.properties
+
+# Check server logs
+tail -f /data/logs/latest.log
+```
+
+#### Performance Issues
+
+**Symptoms**: Server lag, high tick time, low TPS (ticks per second)
+
+**Solutions**:
+1. **Increase Memory**: Increase `task_memory` and `MEMORY`
+2. **Reduce View Distance**: Lower `VIEW_DISTANCE` (reduces chunk loading)
+3. **Reduce Simulation Distance**: Lower `SIMULATION_DISTANCE` (fewer active entities)
+4. **Use Paper**: Switch to `TYPE=PAPER` for better performance
+5. **Enable Aikar Flags**: Set `USE_AIKAR_FLAGS=true`
+6. **Check CPU**: Ensure `task_cpu` is sufficient (2 vCPU minimum for 20+ players)
+
+**Monitoring**:
+```bash
+# Check server TPS (via RCON or logs)
+# Look for "Can't keep up! Is the server overloaded?" messages
+aws logs tail /ecs/minecraft-server --follow | grep -i "overloaded\|tps\|tick"
+```
+
+#### Out of Memory Errors
+
+**Symptoms**: Server crashes with `OutOfMemoryError`, high memory usage
+
+**Solutions**:
+1. **Increase ECS Memory**: Increase `task_memory` in Terraform
+2. **Adjust JVM Memory**: Ensure `MEMORY` is appropriate for `task_memory`
+3. **Enable Aikar Flags**: Better garbage collection
+4. **Reduce View Distance**: Lower memory usage
+5. **Check for Memory Leaks**: Monitor memory usage over time
+
+**Memory Calculation**:
+- If `task_memory = 4096` and getting OOM errors:
+  - Try `MEMORY = "2.5G"` (leave more headroom)
+  - Or increase `task_memory = 5120` and use `MEMORY = "4G"`
+
+#### Players Cannot Connect
+
+**Symptoms**: Players can't connect despite server running
+
+**Solutions**:
+1. **Check Online Mode**: Ensure `ONLINE_MODE` matches player authentication
+2. **Check Whitelist**: Disable whitelist if not needed: `WHITELIST=false`
+3. **Verify Port**: Ensure `SERVER_PORT=25565` matches infrastructure
+4. **Check Firewall**: Verify ALB security group allows TCP 25565
+5. **Check Server Status**: Verify server is accepting connections (check logs)
+
+**Debugging**:
+```bash
+# Check if server is listening
+netstat -tuln | grep 25565
+
+# Check server logs for connection errors
+aws logs tail /ecs/minecraft-server --follow | grep -i "connection\|login\|failed"
+```
+
 ## Outputs
 
 **Connection Information**:

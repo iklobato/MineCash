@@ -1,0 +1,33 @@
+# Required: Docker image for Minecraft server
+container_image = "itzg/minecraft-server:latest"
+
+# Optional: Override defaults
+aws_region      = "sa-east-1"
+environment     = "production"
+desired_count   = 1
+task_cpu        = 2048      # 2 vCPU
+task_memory     = 4096      # 4GB
+
+# Redis configuration
+redis_node_type     = "cache.t3.micro"
+redis_replica_count = 1
+
+# Redis auth token secret (create in AWS Secrets Manager before applying)
+# redis_auth_token_secret_name = "minecraft/redis/auth-token"
+
+# EFS configuration
+efs_performance_mode = "generalPurpose"
+
+# Global Accelerator (for low latency)
+enable_global_accelerator = true
+
+# ALB deletion protection (set to false to allow terraform destroy)
+enable_deletion_protection = false
+
+# Tags
+tags = {
+  CostCenter = "gaming"
+  Team       = "devops"
+  Project    = "minecraft"
+}
+

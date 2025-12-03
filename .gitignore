@@ -1,0 +1,122 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfplan
+*.tfvars.backup
+
+# Terraform Backend
+backend.tf
+!backend.tf.example
+
+# Cursor IDE
+.cursor/
+*.cursor
+.cursorignore
+
+# Specify
+.specify/
+*.specify
+.specifyignore
+
+# Specs Directory
+specs/
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+*.log.*
+logs/
+*.out
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Temporary Files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.cache
+.cache/
+
+# Python (if any scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Node.js (if any scripts)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# AWS
+.aws/
+*.pem
+*.key
+*.crt
+*.p12
+
+# Secrets and Credentials
+secrets/
+*.secret
+*.credentials
+credentials.json
+secrets.json
+
+# Build Artifacts
+dist/
+build/
+*.zip
+*.tar.gz
+*.rar
+
+# Test Coverage
+coverage/
+.nyc_output/
+*.coverage
+
+# Documentation Build
+docs/_build/
+site/

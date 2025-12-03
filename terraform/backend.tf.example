@@ -25,3 +25,4 @@ terraform {
 # 5. Update bucket name and region
 # 6. Run terraform init
 
+

@@ -56,3 +56,4 @@ module "cache" {
 - Auth token retrieved from Secrets Manager (if provided)
 - Security group restricts access to ECS tasks only
 
+

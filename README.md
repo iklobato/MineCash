@@ -10,6 +10,7 @@ Production-ready Terraform project for deploying a containerized Minecraft serve
 - **ElastiCache Redis**: Managed Redis cluster for caching and state management
 - **Application Load Balancer**: Distributes player traffic
 - **Global Accelerator**: Optimizes routing for lowest latency via AWS backbone
+- **Route 53 DNS**: Automatic DNS record creation for friendly hostnames (subdomain or apex domain)
 - **Security**: Security groups, Secrets Manager integration, Systems Manager Session Manager
 
 ## Architecture Overview
@@ -203,10 +204,17 @@ terraform/
 │   │   ├── outputs.tf           # Module outputs (Redis endpoint, etc.)
 │   │   └── README.md            # Module-specific documentation
 │   │
-│   └── networking/              # ALB + Global Accelerator module
-│       ├── main.tf              # ALB, target group, listener, security group
+│   ├── networking/              # ALB + Global Accelerator module
+│   │   ├── main.tf              # ALB, target group, listener, security group
+│   │   ├── variables.tf         # Module input variables
+│   │   ├── outputs.tf           # Module outputs (ALB ARN, DNS name, etc.)
+│   │   └── README.md            # Module-specific documentation
+│   │
+│   └── route53-dns/             # Route 53 DNS module
+│       ├── main.tf              # Route 53 record, hosted zone lookup, alias configuration
 │       ├── variables.tf         # Module input variables
-│       ├── outputs.tf           # Module outputs (ALB ARN, DNS name, etc.)
+│       ├── outputs.tf           # Module outputs (FQDN, record name)
+│       ├── versions.tf          # Provider requirements
 │       └── README.md            # Module-specific documentation
 ```
 
@@ -231,6 +239,7 @@ terraform/
 **Special Files**:
 
 - `modules/ecs/task-definition.json.tpl`: Template file for ECS task definition container configuration, uses Terraform templatefile() function for variable substitution
+- `modules/route53-dns/INTEGRATION_EXAMPLE.md`: Integration guide for Route 53 DNS module
 
 ## Component Deep Dive
 
@@ -681,6 +690,115 @@ The task definition is generated from `task-definition.json.tpl` template:
 
 ---
 
+### Route 53 DNS Module (`modules/route53-dns/`)
+
+**Purpose**: Creates Route 53 DNS records for Minecraft server endpoints, enabling players to connect using friendly domain names instead of IP addresses or AWS DNS names.
+
+**Responsibilities**:
+- Route 53 DNS record creation (alias, A, or AAAA records)
+- Automatic hosted zone lookup for existing domains
+- Alias record auto-configuration for AWS resources (ALB, Global Accelerator, CloudFront)
+- Domain name normalization and validation
+- Error handling for missing or ambiguous hosted zones
+
+**Resources Created**:
+
+1. **Route 53 DNS Record** (`aws_route53_record.main`):
+   - **Record Type**: Alias (for AWS resources), A (for IPv4), or AAAA (for IPv6)
+   - **Record Name**: Subdomain + domain (e.g., `mc.example.com`) or apex domain (e.g., `example.com`)
+   - **Target**: ALB DNS name, Global Accelerator DNS name, CloudFront DNS name, or IP address
+   - **TTL**: Configurable for A/AAAA records (default: 300 seconds), not applicable for alias records
+
+**Hosted Zone Lookup**:
+
+- **Automatic Lookup**: When `hosted_zone_id` is not provided, module automatically looks up public hosted zones for the domain
+- **Single Zone**: If exactly one public zone exists, uses it automatically
+- **Multiple Zones**: If multiple public zones exist, errors with clear message requiring explicit `hosted_zone_id`
+- **No Zone**: If no public zones exist, errors with clear message
+
+**Alias Record Auto-Configuration**:
+
+The module automatically configures alias record attributes based on `target_endpoint` pattern:
+
+- **ALB Endpoints** (`.elb.amazonaws.com`):
+  - `evaluate_target_health = true`
+  - Zone ID: Looked up by region using `data.aws_lb_hosted_zone_id`
+- **Global Accelerator Endpoints** (`.awsglobalaccelerator.com`):
+  - `evaluate_target_health = false`
+  - Zone ID: `Z2BJ6XQ5FK7U4H` (Global Accelerator constant)
+- **CloudFront Endpoints** (`.cloudfront.net`):
+  - `evaluate_target_health = false`
+  - Zone ID: `Z2FDTNDATAQYW2` (CloudFront constant)
+
+Override variables (`evaluate_target_health_override`, `zone_id_override`) allow advanced customization.
+
+**Domain Normalization**:
+
+- **Trailing Dots**: Automatically removed (Route 53 stores domains without trailing dots)
+- **Case**: Automatically lowercased for consistency
+- **Subdomain Handling**: Null or empty subdomain creates apex domain record
+
+**Validation**:
+
+- **Domain Name**: RFC 1123 compliant, 1-253 characters, cannot start/end with hyphen or dot
+- **Subdomain**: RFC 1123 compliant, 1-63 characters per label
+- **Record Type**: Must be exactly one of: `"alias"`, `"A"`, or `"AAAA"`
+- **Target Endpoint**: Format must match record_type (DNS name for alias, IPv4 for A, IPv6 for AAAA)
+- **TTL**: Must be between 60 and 2147483647 seconds (Route 53 limits)
+
+**Use Cases**:
+
+- **Subdomain**: Create `mc.example.com` pointing to ALB or Global Accelerator
+- **Apex Domain**: Create `example.com` pointing to Minecraft server endpoint
+- **IPv4 Address**: Create A record pointing to static IPv4 address
+- **IPv6 Address**: Create AAAA record pointing to IPv6 address
+
+**Module Interface**:
+
+**Inputs** (`modules/route53-dns/variables.tf`):
+- `domain_name`: Root domain name (required, e.g., "example.com")
+- `subdomain`: Subdomain prefix (optional, null for apex domain)
+- `record_type`: Record type - "alias", "A", or "AAAA" (required)
+- `target_endpoint`: Endpoint to point to - DNS name or IP (required)
+- `hosted_zone_id`: Explicit hosted zone ID (optional, bypasses lookup)
+- `ttl`: TTL in seconds for A/AAAA records (default: 300)
+- `evaluate_target_health_override`: Override for alias evaluate_target_health (optional)
+- `zone_id_override`: Override for alias zone_id (optional)
+
+**Outputs** (`modules/route53-dns/outputs.tf`):
+- `fqdn`: Fully-qualified domain name (e.g., `mc.example.com` or `example.com`)
+- `record_name`: Route 53 record name (may include trailing dot)
+
+**Integration Example**:
+
+```hcl
+module "minecraft_dns" {
+  source = "./modules/route53-dns"
+
+  domain_name     = "example.com"
+  subdomain       = "mc"
+  record_type     = "alias"
+  target_endpoint = var.enable_global_accelerator ? aws_globalaccelerator_accelerator.main[0].dns_name : module.networking.alb_dns_name
+
+  tags = var.tags
+}
+
+# Output FQDN for player connections
+output "minecraft_server_hostname" {
+  description = "Minecraft server hostname for player connections"
+  value       = module.minecraft_dns.fqdn
+}
+```
+
+**Error Handling**:
+
+- **No Hosted Zone**: Clear error message with instructions to create zone or provide explicit `hosted_zone_id`
+- **Multiple Hosted Zones**: Error requiring explicit `hosted_zone_id` to disambiguate
+- **Format Mismatch**: Validation error when `target_endpoint` format doesn't match `record_type`
+- **Missing Zone ID**: Error when alias record cannot determine zone_id (requires recognized AWS resource or override)
+
+---
+
 ### Root Module (`terraform/main.tf`)
 
 **Purpose**: Orchestrates all modules and manages cross-module dependencies and integrations.
@@ -750,7 +868,11 @@ Provider-level `default_tags` ensure all resources are tagged:
 ```
 Player (Internet)
   │
-  │ TCP 25565
+  │ DNS Query: mc.example.com
+  ▼
+Route 53 DNS (if DNS module used)
+  │ Resolves hostname to ALB DNS or Global Accelerator DNS
+  │ Alias record (no TTL, always current)
   ▼
 Global Accelerator (if enabled)
   │ Static IP addresses, optimal routing via AWS backbone
@@ -773,6 +895,8 @@ Minecraft Server Process
 ```
 
 **Key Points**:
+- Route 53 DNS provides friendly hostnames (optional, e.g., `mc.example.com`)
+- DNS alias records point to ALB or Global Accelerator (no TTL, always current)
 - Global Accelerator provides stable IP addresses and optimal routing
 - ALB performs health checks and distributes traffic
 - ECS tasks receive traffic on private IPs (no public IPs)
@@ -944,6 +1068,7 @@ Internet (0.0.0.0/0)
    - Cache: Caching layer
    - Networking: Traffic distribution
    - ECS: Container orchestration
+   - Route 53 DNS: DNS record management
 
 2. **Encapsulation**: Modules hide implementation details
    - Callers only need to provide inputs and consume outputs
@@ -989,6 +1114,11 @@ Internet (0.0.0.0/0)
 - **Provides**: Container orchestration and execution
 - **Does Not Own**: ALB or target group (receives ARN as input)
 
+**Route 53 DNS Module**:
+- **Owns**: Route 53 DNS record
+- **Provides**: DNS record management for friendly hostnames
+- **Does Not Own**: Hosted zone (assumes existing zone or requires explicit zone ID)
+
 ### Module Dependencies and Execution Order
 
 **Dependency Graph**:
@@ -1000,19 +1130,24 @@ VPC Module
   ├─→ Cache Module
   ├─→ Networking Module
   │
-  └─→ ECS Module
+  ├─→ ECS Module
+  │     │
+  │     ├─→ Depends on Storage Module (EFS ID, security group)
+  │     ├─→ Depends on Cache Module (Redis endpoint, security group)
+  │     └─→ Depends on Networking Module (Target group ARN, ALB security group)
+  │
+  └─→ Route 53 DNS Module (optional)
         │
-        ├─→ Depends on Storage Module (EFS ID, security group)
-        ├─→ Depends on Cache Module (Redis endpoint, security group)
-        └─→ Depends on Networking Module (Target group ARN, ALB security group)
+        └─→ Depends on Networking Module (ALB DNS name) or Global Accelerator (DNS name)
 ```
 
 **Execution Order** (Terraform automatically handles this via dependencies):
 
 1. **VPC Module**: Created first (foundation)
 2. **Storage, Cache, Networking Modules**: Created in parallel (independent)
-3. **ECS Module**: Created last (requires outputs from all others)
-4. **Security Group Rules**: Created at root level after all modules (cross-references)
+3. **ECS Module**: Created after Storage, Cache, and Networking (requires their outputs)
+4. **Route 53 DNS Module**: Created after Networking or Global Accelerator (optional, requires endpoint DNS name)
+5. **Security Group Rules**: Created at root level after all modules (cross-references)
 
 ### Module Interface (Inputs/Outputs)
 
@@ -1067,6 +1202,7 @@ module.vpc.private_subnet_ids
 - **Cache Module**: Can be reused for any project needing Redis caching
 - **Networking Module**: Can be reused for any project needing ALB
 - **ECS Module**: Can be adapted for other containerized applications
+- **Route 53 DNS Module**: Can be reused for any project needing DNS records for AWS resources or IP addresses
 
 **Adaptation for Other Projects**:
 
@@ -1361,6 +1497,7 @@ See `terraform/variables.tf` for complete variable definitions with types, defau
 **Connection Information**:
 - `minecraft_endpoint`: Public endpoint for players to connect (Global Accelerator IP or ALB DNS)
 - `global_accelerator_dns_name`: Global Accelerator DNS name (if enabled)
+- `minecraft_server_hostname`: Route 53 DNS hostname (if DNS module is used, e.g., `mc.example.com`)
 - `redis_endpoint`: ElastiCache Redis cluster endpoint
 - `efs_dns_name`: EFS DNS name for mounting
 

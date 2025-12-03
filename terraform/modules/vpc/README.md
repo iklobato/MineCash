@@ -55,3 +55,4 @@ module "vpc" {
 - Minimum 2 Availability Zones required for high availability
 - NAT Gateways are created in public subnets
 
+

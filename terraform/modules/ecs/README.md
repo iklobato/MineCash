@@ -72,3 +72,4 @@ module "ecs" {
 - Deployment circuit breaker enabled for automatic rollback
 - Zero-downtime deployments configured (200% max, 100% min healthy)
 
+

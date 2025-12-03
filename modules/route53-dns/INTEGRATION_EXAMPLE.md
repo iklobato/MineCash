@@ -4,7 +4,7 @@ This document shows how to integrate the Route 53 DNS module with the existing M
 
 ## Basic Integration
 
-Add the Route 53 DNS module to your root Terraform configuration (`terraform/main.tf`):
+Add the Route 53 DNS module to your root Terraform configuration (`main.tf`):
 
 ```hcl
 # Route 53 DNS Module - Creates DNS record for Minecraft server
@@ -22,7 +22,7 @@ module "minecraft_dns" {
 
 ## Output Integration
 
-Add DNS outputs to your root `terraform/outputs.tf`:
+Add DNS outputs to your root `outputs.tf`:
 
 ```hcl
 output "minecraft_server_hostname" {
@@ -38,7 +38,7 @@ output "minecraft_dns_record_name" {
 
 ## Variable Integration
 
-Add DNS-related variables to your root `terraform/variables.tf`:
+Add DNS-related variables to your root `variables.tf`:
 
 ```hcl
 variable "domain_name" {
@@ -82,5 +82,5 @@ output "minecraft_server_hostname" {
 
 ## Complete Example
 
-See `terraform/main.tf` for a complete integration example with all modules.
+See `main.tf` for a complete integration example with all modules.
 

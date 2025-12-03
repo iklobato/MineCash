@@ -169,7 +169,6 @@ Ensure your AWS account has sufficient quotas:
 ### Directory Layout
 
 ```
-terraform/
 ├── main.tf                      # Root module - orchestrates all sub-modules
 ├── variables.tf                 # Input variables with defaults and validation
 ├── outputs.tf                   # Output values (endpoints, IDs, etc.)
@@ -799,7 +798,7 @@ output "minecraft_server_hostname" {
 
 ---
 
-### Root Module (`terraform/main.tf`)
+### Root Module (`main.tf`)
 
 **Purpose**: Orchestrates all modules and manages cross-module dependencies and integrations.
 
@@ -1490,7 +1489,7 @@ See `terraform.tfvars.example` for all available variables. Key variables:
 
 ### Complete Variable List
 
-See `terraform/variables.tf` for complete variable definitions with types, defaults, descriptions, and validation rules.
+See `variables.tf` for complete variable definitions with types, defaults, descriptions, and validation rules.
 
 ## Minecraft Server Configuration
 
@@ -1509,7 +1508,7 @@ The Minecraft server can be configured in two ways:
 
 ### Currently Configured Parameters
 
-The following parameters are currently set in the ECS task definition (see `terraform/modules/ecs/task-definition.json.tpl`):
+The following parameters are currently set in the ECS task definition (see `modules/ecs/task-definition.json.tpl`):
 
 **Required Configuration**:
 - `EULA=TRUE`: Accepts Minecraft End User License Agreement (required for server to start)
@@ -1778,7 +1777,7 @@ The `MEMORY` environment variable sets JVM heap size. Relationship to ECS task m
 
 Add environment variables to the ECS task definition via Terraform:
 
-**Step 1**: Modify task definition template (`terraform/modules/ecs/task-definition.json.tpl`):
+**Step 1**: Modify task definition template (`modules/ecs/task-definition.json.tpl`):
 
 ```json
 "environment": [
@@ -1813,7 +1812,7 @@ Add environment variables to the ECS task definition via Terraform:
 ]
 ```
 
-**Step 2**: Add variables to ECS module (`terraform/modules/ecs/variables.tf`):
+**Step 2**: Add variables to ECS module (`modules/ecs/variables.tf`):
 
 ```hcl
 variable "motd" {
@@ -1841,7 +1840,7 @@ variable "use_aikar_flags" {
 }
 ```
 
-**Step 3**: Pass variables from root module (`terraform/main.tf`):
+**Step 3**: Pass variables from root module (`main.tf`):
 
 ```hcl
 module "ecs" {
@@ -1855,7 +1854,7 @@ module "ecs" {
 }
 ```
 
-**Step 4**: Add root variables (`terraform/variables.tf`):
+**Step 4**: Add root variables (`variables.tf`):
 
 ```hcl
 variable "minecraft_motd" {
@@ -1885,7 +1884,7 @@ variable "minecraft_use_aikar_flags" {
 
 **Step 5**: Update template file to use variables:
 
-Modify `terraform/modules/ecs/main.tf` to calculate memory if not provided:
+Modify `modules/ecs/main.tf` to calculate memory if not provided:
 
 ```hcl
 locals {
@@ -3159,7 +3158,7 @@ aws ec2 describe-security-groups \
 ### Common Development Tasks
 
 **Adding a New Variable**:
-1. Add variable to `terraform/variables.tf`
+1. Add variable to `variables.tf`
 2. Add to `terraform.tfvars.example`
 3. Pass to appropriate module(s)
 4. Update module variables if needed
@@ -3233,7 +3232,7 @@ terraform import <resource-address> <aws-resource-id>
 #### Prerequisites
 
 **Required Tools**:
-- **Terraform** >= 1.0 installed ([Installation Guide](https://developer.hashicorp.com/terraform/downloads))
+- **Terraform** >= 1.0 installed ([Installation Guide](https://developer.hashicorp.com/downloads))
 - **AWS CLI** >= 2.0 installed and configured ([Installation Guide](https://aws.amazon.com/cli/))
 - **AWS Account** with appropriate permissions
 - **Git** (for cloning repository)
@@ -4230,7 +4229,6 @@ Deploy a production-ready, containerized Minecraft server infrastructure on AWS 
 **Source Code (repository root)**:
 
 ```text
-terraform/
 ├── main.tf                 # Root module - orchestrates all sub-modules
 ├── variables.tf            # Input variables with defaults
 ├── outputs.tf              # Output values (endpoints, IDs, etc.)

@@ -28,6 +28,9 @@ backend.tf
 *.specify
 .specifyignore
 
+# Specs Directory
+specs/
+
 # IDE and Editor
 .vscode/
 .idea/

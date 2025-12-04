@@ -13,6 +13,8 @@ override.tf.json
 *_override.tf.json
 *.tfplan
 *.tfvars.backup
+plan-before.txt
+state-backup-*.json
 
 # Terraform Backend
 backend.tf

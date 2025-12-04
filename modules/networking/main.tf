@@ -1,6 +1,12 @@
+locals {
+  alb_security_group_name = "${var.project_name}-alb-sg"
+  alb_name                = "${var.project_name}-alb"
+  target_group_name       = "${var.project_name}-tg"
+}
+
 # ALB Security Group
 resource "aws_security_group" "alb" {
-  name        = "minecraft-alb-sg"
+  name        = local.alb_security_group_name
   description = "Security group for Application Load Balancer"
   vpc_id      = var.vpc_id
 
@@ -22,7 +28,7 @@ resource "aws_security_group" "alb" {
 
   tags = merge(
     {
-      Name = "minecraft-alb-sg"
+      Name = local.alb_security_group_name
     },
     var.tags
   )
@@ -30,7 +36,7 @@ resource "aws_security_group" "alb" {
 
 # Application Load Balancer
 resource "aws_lb" "main" {
-  name               = "minecraft-alb"
+  name               = local.alb_name
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -40,7 +46,7 @@ resource "aws_lb" "main" {
 
   tags = merge(
     {
-      Name = "minecraft-alb"
+      Name = local.alb_name
     },
     var.tags
   )
@@ -48,7 +54,7 @@ resource "aws_lb" "main" {
 
 # Target Group
 resource "aws_lb_target_group" "main" {
-  name        = "minecraft-tg"
+  name        = local.target_group_name
   port        = var.target_group_port
   protocol    = "TCP"
   vpc_id      = var.vpc_id
@@ -66,7 +72,7 @@ resource "aws_lb_target_group" "main" {
 
   tags = merge(
     {
-      Name = "minecraft-tg"
+      Name = local.target_group_name
     },
     var.tags
   )

@@ -2,6 +2,7 @@
 container_image = "itzg/minecraft-server:latest"
 
 # Optional: Override defaults
+project_name    = "minecraft"  # Project name used for resource naming (defaults to "minecraft" for backward compatibility)
 aws_region      = "sa-east-1"
 environment     = "production"
 desired_count   = 1
@@ -25,10 +26,10 @@ enable_global_accelerator = true
 enable_deletion_protection = false
 
 # Tags
+# Note: The "Project" tag is automatically generated from project_name variable as "{project_name}-server"
 tags = {
   CostCenter = "gaming"
   Team       = "devops"
-  Project    = "minecraft"
 }
 
 

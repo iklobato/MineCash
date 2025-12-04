@@ -1,3 +1,14 @@
+locals {
+  vpc_name                 = "${var.project_name}-vpc"
+  public_subnet_name       = "${var.project_name}-public-subnet"
+  private_subnet_name      = "${var.project_name}-private-subnet"
+  internet_gateway_name    = "${var.project_name}-igw"
+  nat_eip_name             = "${var.project_name}-nat-eip"
+  nat_gateway_name         = "${var.project_name}-nat"
+  public_route_table_name  = "${var.project_name}-public-rt"
+  private_route_table_name = "${var.project_name}-private-rt"
+}
+
 # VPC
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
@@ -6,7 +17,7 @@ resource "aws_vpc" "main" {
 
   tags = merge(
     {
-      Name = "minecraft-vpc"
+      Name = local.vpc_name
     },
     var.tags
   )
@@ -23,7 +34,7 @@ resource "aws_subnet" "public" {
 
   tags = merge(
     {
-      Name = "minecraft-public-subnet-${count.index + 1}"
+      Name = "${local.public_subnet_name}-${count.index + 1}"
       Type = "public"
     },
     var.tags
@@ -40,7 +51,7 @@ resource "aws_subnet" "private" {
 
   tags = merge(
     {
-      Name = "minecraft-private-subnet-${count.index + 1}"
+      Name = "${local.private_subnet_name}-${count.index + 1}"
       Type = "private"
     },
     var.tags
@@ -53,7 +64,7 @@ resource "aws_internet_gateway" "main" {
 
   tags = merge(
     {
-      Name = "minecraft-igw"
+      Name = local.internet_gateway_name
     },
     var.tags
   )
@@ -67,7 +78,7 @@ resource "aws_eip" "nat" {
 
   tags = merge(
     {
-      Name = "minecraft-nat-eip-${count.index + 1}"
+      Name = "${local.nat_eip_name}-${count.index + 1}"
     },
     var.tags
   )
@@ -84,7 +95,7 @@ resource "aws_nat_gateway" "main" {
 
   tags = merge(
     {
-      Name = "minecraft-nat-${count.index + 1}"
+      Name = "${local.nat_gateway_name}-${count.index + 1}"
     },
     var.tags
   )
@@ -103,7 +114,7 @@ resource "aws_route_table" "public" {
 
   tags = merge(
     {
-      Name = "minecraft-public-rt"
+      Name = local.public_route_table_name
     },
     var.tags
   )
@@ -130,7 +141,7 @@ resource "aws_route_table" "private" {
 
   tags = merge(
     {
-      Name = "minecraft-private-rt-${count.index + 1}"
+      Name = "${local.private_route_table_name}-${count.index + 1}"
     },
     var.tags
   )

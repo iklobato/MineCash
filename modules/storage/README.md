@@ -8,10 +8,12 @@ Creates an Amazon EFS file system with mount targets for persistent shared stora
 module "storage" {
   source = "./modules/storage"
 
-  vpc_id            = module.vpc.vpc_id
-  subnet_ids        = module.vpc.private_subnet_ids
-  performance_mode  = "generalPurpose"
-  tags              = {}
+  vpc_id           = module.vpc.vpc_id
+  subnet_ids       = module.vpc.private_subnet_ids
+  performance_mode = "generalPurpose"
+  project_name     = "minecraft"
+  environment      = "production"
+  tags             = {}
 }
 ```
 
@@ -21,8 +23,9 @@ module "storage" {
 |------|-------------|------|---------|----------|
 | vpc_id | VPC ID | `string` | n/a | yes |
 | subnet_ids | List of subnet IDs for EFS mount targets | `list(string)` | n/a | yes |
-| security_group_id | Security group ID for EFS (will be created if null) | `string` | `null` | no |
 | performance_mode | EFS performance mode (generalPurpose or maxIO) | `string` | `"generalPurpose"` | no |
+| project_name | Project name used for resource naming (e.g., 'minecraft') | `string` | n/a | yes |
+| environment | Environment name used for resource naming and tagging (e.g., 'production', 'staging') | `string` | n/a | yes |
 | tags | Additional tags to apply to all resources | `map(string)` | `{}` | no |
 
 ## Outputs

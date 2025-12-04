@@ -1,3 +1,7 @@
+locals {
+  redis_security_group_name = "${var.project_name}-redis-sg"
+}
+
 # ElastiCache Subnet Group
 resource "aws_elasticache_subnet_group" "main" {
   name       = var.subnet_group_name
@@ -15,7 +19,7 @@ resource "aws_elasticache_subnet_group" "main" {
 # Note: Ingress rule will be added via security_group_rule in root module
 # to avoid circular dependency with ECS module
 resource "aws_security_group" "redis" {
-  name        = "minecraft-redis-sg"
+  name        = local.redis_security_group_name
   description = "Security group for ElastiCache Redis"
   vpc_id      = data.aws_subnet.main.vpc_id
 
@@ -29,13 +33,14 @@ resource "aws_security_group" "redis" {
 
   tags = merge(
     {
-      Name = "minecraft-redis-sg"
+      Name = local.redis_security_group_name
     },
     var.tags
   )
 }
 
 # Get subnet info for VPC ID
+# Note: Security group rule for ECS access is managed in root module to avoid circular dependencies
 data "aws_subnet" "main" {
   id = var.subnet_ids[0]
 }

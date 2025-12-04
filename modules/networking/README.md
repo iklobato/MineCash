@@ -12,6 +12,8 @@ module "networking" {
   subnet_ids                = module.vpc.public_subnet_ids
   target_group_port         = 25565
   enable_deletion_protection = false
+  project_name              = "minecraft"
+  environment               = "production"
   tags                      = {}
 }
 ```
@@ -22,10 +24,11 @@ module "networking" {
 |------|-------------|------|---------|----------|
 | vpc_id | VPC ID | `string` | n/a | yes |
 | subnet_ids | List of public subnet IDs for ALB | `list(string)` | n/a | yes |
-| security_group_id | Security group ID for ALB (will be created if null) | `string` | `null` | no |
 | target_group_port | Port for target group (Minecraft server port) | `number` | `25565` | no |
 | enable_global_accelerator | Enable Global Accelerator | `bool` | `true` | no |
 | enable_deletion_protection | Enable deletion protection on ALB | `bool` | `false` | no |
+| project_name | Project name used for resource naming (e.g., 'minecraft') | `string` | n/a | yes |
+| environment | Environment name used for resource naming and tagging (e.g., 'production', 'staging') | `string` | n/a | yes |
 | tags | Additional tags to apply to all resources | `map(string)` | `{}` | no |
 
 ## Outputs

@@ -9,12 +9,14 @@ module "cache" {
   source = "./modules/cache"
 
   cluster_id              = "minecraft-redis-production"
-  node_type              = "cache.t3.micro"
-  num_cache_nodes        = 2
-  subnet_group_name      = "minecraft-redis-subnet-production"
-  subnet_ids             = module.vpc.private_subnet_ids
-  auth_token_secret_name = "minecraft/redis/auth-token"
-  tags                   = {}
+  node_type               = "cache.t3.micro"
+  num_cache_nodes         = 2
+  subnet_group_name       = "minecraft-redis-subnet-production"
+  subnet_ids              = module.vpc.private_subnet_ids
+  auth_token_secret_name  = "minecraft/redis/auth-token"
+  project_name            = "minecraft"
+  environment             = "production"
+  tags                    = {}
 }
 ```
 
@@ -22,12 +24,14 @@ module "cache" {
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|----------|
-| cluster_id | Redis cluster identifier | `string` | n/a | yes |
+| cluster_id | Redis cluster identifier (typically `{project_name}-redis-{environment}`) | `string` | n/a | yes |
 | node_type | Redis node instance type | `string` | `"cache.t3.micro"` | no |
 | num_cache_nodes | Number of cache nodes (primary + replicas) | `number` | `2` | no |
-| subnet_group_name | ElastiCache subnet group name | `string` | n/a | yes |
+| subnet_group_name | ElastiCache subnet group name (typically `{project_name}-redis-subnet-{environment}`) | `string` | n/a | yes |
 | subnet_ids | List of subnet IDs for ElastiCache subnet group | `list(string)` | n/a | yes |
 | auth_token_secret_name | AWS Secrets Manager secret name containing Redis auth token | `string` | `null` | no |
+| project_name | Project name used for resource naming (e.g., 'minecraft') | `string` | n/a | yes |
+| environment | Environment name used for resource naming and tagging (e.g., 'production', 'staging') | `string` | n/a | yes |
 | tags | Additional tags to apply to all resources | `map(string)` | `{}` | no |
 
 ## Outputs

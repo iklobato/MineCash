@@ -1,11 +1,11 @@
 [
   {
-    "name": "minecraft-server",
+    "name": "${container_name}",
     "image": "${container_image}",
     "essential": true,
     "portMappings": [
       {
-        "containerPort": 25565,
+        "containerPort": ${minecraft_port},
         "protocol": "tcp"
       }
     ],
@@ -38,7 +38,7 @@
     "logConfiguration": {
       "logDriver": "awslogs",
       "options": {
-        "awslogs-group": "/ecs/minecraft-server",
+        "awslogs-group": "${log_group_name}",
         "awslogs-region": "${aws_region}",
         "awslogs-stream-prefix": "ecs"
       }

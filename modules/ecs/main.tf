@@ -1,6 +1,15 @@
+locals {
+  log_group_name           = "/ecs/${var.project_name}-server"
+  ecs_task_security_group_name = "${var.project_name}-ecs-task-sg"
+  container_name          = "${var.project_name}-server"
+  minecraft_port          = var.minecraft_server_port
+  redis_port              = var.redis_port
+  nfs_port                = 2049
+}
+
 # CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "main" {
-  name              = "/ecs/minecraft-server"
+  name              = local.log_group_name
   retention_in_days = 7
 
   tags = var.tags
@@ -137,14 +146,14 @@ data "aws_secretsmanager_secret" "redis_auth" {
 
 # ECS Task Security Group
 resource "aws_security_group" "ecs_task" {
-  name        = "minecraft-ecs-task-sg"
+  name        = local.ecs_task_security_group_name
   description = "Security group for ECS tasks"
   vpc_id      = data.aws_subnet.main.vpc_id
 
   ingress {
     description     = "Minecraft server port from ALB"
-    from_port       = 25565
-    to_port         = 25565
+    from_port       = local.minecraft_port
+    to_port         = local.minecraft_port
     protocol        = "tcp"
     security_groups = [var.alb_security_group_id]
   }
@@ -167,7 +176,7 @@ resource "aws_security_group" "ecs_task" {
 
   tags = merge(
     {
-      Name = "minecraft-ecs-task-sg"
+      Name = local.ecs_task_security_group_name
     },
     var.tags
   )
@@ -193,10 +202,13 @@ resource "aws_ecs_task_definition" "main" {
 
   container_definitions = templatefile("${path.module}/task-definition.json.tpl", {
     container_image       = var.container_image
+    container_name        = local.container_name
     redis_host            = split(":", var.redis_endpoint)[0]
     redis_port            = var.redis_port
     redis_auth_secret_arn = var.redis_auth_token_secret_name != null ? data.aws_secretsmanager_secret.redis_auth[0].arn : ""
-    aws_region            = data.aws_region.current.name
+    aws_region            = data.aws_region.current.id
+    log_group_name        = local.log_group_name
+    minecraft_port        = local.minecraft_port
   })
 
   volume {
@@ -231,14 +243,12 @@ resource "aws_ecs_service" "main" {
 
   load_balancer {
     target_group_arn = var.target_group_arn
-    container_name   = "minecraft-server"
-    container_port   = 25565
+    container_name   = local.container_name
+    container_port   = local.minecraft_port
   }
 
-  deployment_configuration {
-    maximum_percent         = 200
-    minimum_healthy_percent = 100
-  }
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
 
   deployment_circuit_breaker {
     enable   = true

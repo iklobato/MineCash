@@ -12,6 +12,8 @@ module "vpc" {
   availability_zones   = ["sa-east-1a", "sa-east-1b"]
   public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
   private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+  project_name        = "minecraft"
+  environment         = "production"
   tags                 = {}
 }
 ```
@@ -24,6 +26,8 @@ module "vpc" {
 | availability_zones | List of availability zones to use | `list(string)` | n/a | yes |
 | public_subnet_cidrs | List of CIDR blocks for public subnets (one per AZ) | `list(string)` | n/a | yes |
 | private_subnet_cidrs | List of CIDR blocks for private subnets (one per AZ) | `list(string)` | n/a | yes |
+| project_name | Project name used for resource naming (e.g., 'minecraft') | `string` | n/a | yes |
+| environment | Environment name used for resource naming and tagging (e.g., 'production', 'staging') | `string` | n/a | yes |
 | tags | Additional tags to apply to all resources | `map(string)` | `{}` | no |
 
 ## Outputs

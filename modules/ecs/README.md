@@ -8,20 +8,23 @@ Creates an ECS Fargate cluster, task definition, and service for running Minecra
 module "ecs" {
   source = "./modules/ecs"
 
-  cluster_name                = "minecraft-cluster-production"
-  service_name                = "minecraft-server-production"
-  container_image             = "itzg/minecraft-server:latest"
-  task_cpu                    = 2048
-  task_memory                 = 4096
-  desired_count               = 1
-  subnet_ids                  = module.vpc.private_subnet_ids
-  efs_file_system_id          = module.storage.efs_id
-  efs_security_group_id       = module.storage.efs_security_group_id
-  target_group_arn            = module.networking.target_group_arn
-  redis_endpoint              = module.cache.redis_endpoint
-  redis_port                  = 6379
+  cluster_name                 = "minecraft-cluster-production"
+  service_name                 = "minecraft-server-production"
+  container_image              = "itzg/minecraft-server:latest"
+  task_cpu                     = 2048
+  task_memory                  = 4096
+  desired_count                = 1
+  subnet_ids                   = module.vpc.private_subnet_ids
+  efs_file_system_id           = module.storage.efs_id
+  efs_security_group_id        = module.storage.efs_security_group_id
+  target_group_arn             = module.networking.target_group_arn
+  redis_endpoint               = module.cache.redis_endpoint
+  redis_port                   = 6379
   redis_auth_token_secret_name = "minecraft/redis/auth-token"
-  tags                        = {}
+  minecraft_server_port        = 25565
+  project_name                 = "minecraft"
+  environment                  = "production"
+  tags                         = {}
 }
 ```
 
@@ -29,8 +32,8 @@ module "ecs" {
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|----------|
-| cluster_name | ECS cluster name | `string` | n/a | yes |
-| service_name | ECS service name | `string` | n/a | yes |
+| cluster_name | ECS cluster name (typically `{project_name}-cluster-{environment}`) | `string` | n/a | yes |
+| service_name | ECS service name (typically `{project_name}-server-{environment}`) | `string` | n/a | yes |
 | container_image | Docker image URI for Minecraft server container | `string` | n/a | yes |
 | task_cpu | CPU units for ECS task (1024 = 1 vCPU) | `number` | `2048` | no |
 | task_memory | Memory in MB for ECS task | `number` | `4096` | no |
@@ -42,6 +45,9 @@ module "ecs" {
 | redis_endpoint | Redis cluster endpoint | `string` | n/a | yes |
 | redis_port | Redis port | `number` | `6379` | no |
 | redis_auth_token_secret_name | AWS Secrets Manager secret name containing Redis auth token | `string` | `null` | no |
+| minecraft_server_port | Minecraft server port (default: 25565) | `number` | `25565` | no |
+| project_name | Project name used for resource naming (e.g., 'minecraft') | `string` | n/a | yes |
+| environment | Environment name used for resource naming and tagging (e.g., 'production', 'staging') | `string` | n/a | yes |
 | tags | Additional tags to apply to all resources | `map(string)` | `{}` | no |
 
 ## Outputs
@@ -55,7 +61,7 @@ module "ecs" {
 
 ## Resources Created
 
-- 1 CloudWatch Log Group (/ecs/minecraft-server)
+- 1 CloudWatch Log Group (`/ecs/{project_name}-server`, e.g., `/ecs/minecraft-server`)
 - 1 ECS Cluster (Fargate)
 - 1 IAM Role (Task Execution - for ECS agent)
 - 1 IAM Role (Task - for application)

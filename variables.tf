@@ -1,3 +1,9 @@
+variable "project_name" {
+  description = "Project name used for resource naming (e.g., 'minecraft'). Defaults to 'minecraft' for backward compatibility. This value is used in resource naming patterns across all modules."
+  type        = string
+  default     = "minecraft"
+}
+
 variable "aws_region" {
   description = "AWS region for resource deployment"
   type        = string

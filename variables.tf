@@ -4,6 +4,17 @@ variable "project_name" {
   default     = "minecraft"
 }
 
+variable "player_capacity" {
+  description = "Target number of concurrent players. When specified, automatically calculates resource sizing for all components (ECS CPU/memory, Redis instance type, EFS performance mode, NAT Gateway count, Global Accelerator enablement). Individual resource variables can override calculated values."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.player_capacity == null || (var.player_capacity >= 100 && var.player_capacity <= 50000 && floor(var.player_capacity) == var.player_capacity)
+    error_message = "Player capacity must be an integer between 100 and 50,000, or null to use manual resource specification. For capacities above 50,000, consider multi-region deployment or custom architecture."
+  }
+}
+
 variable "aws_region" {
   description = "AWS region for resource deployment"
   type        = string
@@ -28,65 +39,70 @@ variable "environment" {
 }
 
 variable "desired_count" {
-  description = "Desired number of ECS tasks to run"
+  description = "Desired number of ECS tasks to run. Overrides calculated value when player_capacity is set."
   type        = number
-  default     = 1
+  default     = null
 
   validation {
-    condition     = var.desired_count > 0 && var.desired_count <= 100
-    error_message = "Desired count must be between 1 and 100."
+    condition     = var.desired_count == null || (var.desired_count > 0 && var.desired_count <= 100)
+    error_message = "Desired count must be between 1 and 100, or null to use calculated value."
   }
 }
 
 variable "task_cpu" {
-  description = "CPU units for ECS task (1024 = 1 vCPU)"
+  description = "CPU units for ECS task (1024 = 1 vCPU). Overrides calculated value when player_capacity is set."
   type        = number
-  default     = 2048
+  default     = null
 
   validation {
-    condition     = contains([256, 512, 1024, 2048, 4096], var.task_cpu)
-    error_message = "Task CPU must be one of: 256, 512, 1024, 2048, 4096."
+    condition     = var.task_cpu == null || contains([256, 512, 1024, 2048, 4096, 8192, 16384], var.task_cpu)
+    error_message = "Task CPU must be one of: 256, 512, 1024, 2048, 4096, 8192, 16384, or null to use calculated value."
   }
 }
 
 variable "task_memory" {
-  description = "Memory in MB for ECS task"
+  description = "Memory in MB for ECS task. Overrides calculated value when player_capacity is set."
   type        = number
-  default     = 4096
+  default     = null
 
   validation {
-    condition     = var.task_memory >= 512 && var.task_memory <= 30720
-    error_message = "Task memory must be between 512 and 30720 MB."
+    condition     = var.task_memory == null || (var.task_memory >= 512 && var.task_memory <= 61440)
+    error_message = "Task memory must be between 512 and 61440 MB, or null to use calculated value."
   }
 }
 
 variable "redis_node_type" {
-  description = "ElastiCache Redis node instance type"
+  description = "ElastiCache Redis node instance type. Overrides calculated value when player_capacity is set."
   type        = string
-  default     = "cache.t3.micro"
+  default     = null
 }
 
 variable "redis_replica_count" {
-  description = "Number of Redis replica nodes"
+  description = "Number of Redis replica nodes. Overrides calculated value when player_capacity is set."
   type        = number
-  default     = 1
+  default     = null
+
+  validation {
+    condition     = var.redis_replica_count == null || (var.redis_replica_count >= 0 && var.redis_replica_count <= 5)
+    error_message = "Redis replica count must be between 0 and 5, or null to use calculated value."
+  }
 }
 
 variable "efs_performance_mode" {
-  description = "EFS performance mode"
+  description = "EFS performance mode. Overrides calculated value when player_capacity is set."
   type        = string
-  default     = "generalPurpose"
+  default     = null
 
   validation {
-    condition     = contains(["generalPurpose", "maxIO"], var.efs_performance_mode)
-    error_message = "EFS performance mode must be 'generalPurpose' or 'maxIO'."
+    condition     = var.efs_performance_mode == null || contains(["generalPurpose", "maxIO"], var.efs_performance_mode)
+    error_message = "EFS performance mode must be 'generalPurpose' or 'maxIO', or null to use calculated value."
   }
 }
 
 variable "enable_global_accelerator" {
-  description = "Enable AWS Global Accelerator for low-latency routing"
+  description = "Enable AWS Global Accelerator for low-latency routing. Overrides calculated value when player_capacity is set."
   type        = bool
-  default     = true
+  default     = null
 }
 
 variable "redis_auth_token_secret_name" {

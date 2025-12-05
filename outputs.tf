@@ -68,3 +68,80 @@ output "security_group_ids" {
   }
 }
 
+# Calculated Resource Values (from player_capacity)
+output "calculated_ecs_cpu" {
+  description = "Calculated ECS CPU units (from player_capacity)"
+  value       = local.calculated_cpu_units
+}
+
+output "calculated_ecs_memory" {
+  description = "Calculated ECS memory in MB (from player_capacity)"
+  value       = local.calculated_memory_mb
+}
+
+output "calculated_ecs_desired_count" {
+  description = "Calculated ECS desired task count (from player_capacity)"
+  value       = local.calculated_desired_count
+}
+
+output "calculated_redis_node_type" {
+  description = "Calculated Redis instance type (from player_capacity)"
+  value       = local.calculated_redis_node_type
+}
+
+output "calculated_redis_replica_count" {
+  description = "Calculated Redis replica count (from player_capacity)"
+  value       = local.calculated_redis_replica_count
+}
+
+output "calculated_efs_performance_mode" {
+  description = "Calculated EFS performance mode (from player_capacity)"
+  value       = local.calculated_efs_performance_mode
+}
+
+output "calculated_nat_gateway_count" {
+  description = "Calculated NAT Gateway count (from player_capacity)"
+  value       = local.calculated_nat_gateway_count
+}
+
+output "calculated_enable_global_accelerator" {
+  description = "Calculated Global Accelerator enablement (from player_capacity)"
+  value       = local.calculated_enable_global_accelerator
+}
+
+# Cost Estimation Outputs
+output "monthly_cost_ecs" {
+  description = "Estimated monthly cost for ECS Fargate (USD)"
+  value       = local.monthly_cost_ecs
+}
+
+output "monthly_cost_redis" {
+  description = "Estimated monthly cost for ElastiCache Redis (USD)"
+  value       = local.monthly_cost_redis
+}
+
+output "monthly_cost_efs" {
+  description = "Estimated monthly cost for EFS storage (USD)"
+  value       = local.monthly_cost_efs
+}
+
+output "monthly_cost_nat" {
+  description = "Estimated monthly cost for NAT Gateways (USD)"
+  value       = local.monthly_cost_nat
+}
+
+output "monthly_cost_alb" {
+  description = "Estimated monthly cost for Application Load Balancer (USD)"
+  value       = local.monthly_cost_alb
+}
+
+output "monthly_cost_accelerator" {
+  description = "Estimated monthly cost for Global Accelerator (USD, 0 if disabled)"
+  value       = local.monthly_cost_accelerator
+}
+
+output "monthly_cost_total" {
+  description = "Estimated total monthly infrastructure cost (USD). Sum of all component costs."
+  value       = local.monthly_cost_total
+}
+

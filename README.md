@@ -1239,13 +1239,14 @@ To adapt this infrastructure for another game server or application:
 - `aws_region`: AWS region (default: "sa-east-1")
 - `vpc_cidr`: VPC CIDR block (default: "10.0.0.0/16")
 - `environment`: Environment name (default: "production")
-- `desired_count`: ECS task count (default: 1)
-- `task_cpu`: CPU units (default: 2048 = 2 vCPU)
-- `task_memory`: Memory MB (default: 4096 = 4GB)
-- `redis_node_type`: Redis instance type (default: "cache.t3.micro")
-- `redis_replica_count`: Redis replicas (default: 1)
-- `efs_performance_mode`: EFS performance mode (default: "generalPurpose")
-- `enable_global_accelerator`: Enable Global Accelerator (default: true)
+- `player_capacity`: Target concurrent players (100-50,000). When set, automatically calculates all resource sizing. Set to null to use manual resource specification. (default: null)
+- `desired_count`: ECS task count. Overrides calculated value when player_capacity is set. (default: null, falls back to calculated or 1)
+- `task_cpu`: CPU units. Overrides calculated value when player_capacity is set. (default: null, falls back to calculated or 2048)
+- `task_memory`: Memory MB. Overrides calculated value when player_capacity is set. (default: null, falls back to calculated or 4096)
+- `redis_node_type`: Redis instance type. Overrides calculated value when player_capacity is set. (default: null, falls back to calculated or "cache.t3.micro")
+- `redis_replica_count`: Redis replicas. Overrides calculated value when player_capacity is set. (default: null, falls back to calculated or 1)
+- `efs_performance_mode`: EFS performance mode. Overrides calculated value when player_capacity is set. (default: null, falls back to calculated or "generalPurpose")
+- `enable_global_accelerator`: Enable Global Accelerator. Overrides calculated value when player_capacity is set. (default: null, falls back to calculated or true)
 - `minecraft_server_port`: Minecraft port (default: 25565)
 - `enable_deletion_protection`: ALB deletion protection (default: false)
 - `tags`: Additional tags (default: {})
@@ -1299,6 +1300,79 @@ validation {
 - **Why**: EFS only supports these two performance modes
 - **generalPurpose**: Recommended for most workloads (small files, metadata)
 - **maxIO**: For high-throughput workloads (not typically needed for Minecraft)
+
+### Player Capacity-Based Auto-Sizing (NEW)
+
+**Overview**: The `player_capacity` variable enables automatic resource sizing based on target concurrent players. When set, the system calculates all resource values (ECS CPU/memory, Redis instance type, EFS performance mode, NAT Gateway count, Global Accelerator enablement) using mathematical formulas.
+
+**Usage**:
+```hcl
+# Simple: Just specify player capacity
+player_capacity = 500
+
+# With overrides: Fine-tune specific resources
+player_capacity = 500
+task_cpu = 4096  # Override calculated CPU
+redis_node_type = "cache.t3.medium"  # Override Redis instance type
+```
+
+**Resource Calculation Formulas**:
+- **CPU**: `cpu_vcpu = max(1, ceil(player_capacity / 100))` (1 vCPU per 100 players, minimum 1)
+- **Memory**: `memory_gb = max(2, ceil(player_capacity / 50))` (1GB per 50 players, minimum 2GB)
+- **Redis**: Selected based on capacity thresholds (cache.t3.micro for 100-500, cache.t3.small for 500-2000, etc.)
+- **EFS Performance Mode**: `maxIO` for >= 5,000 players, `generalPurpose` otherwise
+- **NAT Gateway Count**: 2 for >= 10,000 players, 1 otherwise
+- **Global Accelerator**: Enabled for >= 1,000 players
+- **ECS Task Count**: 1 for < 5,000 players, `ceil(player_capacity / 5000)` with minimum 2 for HA otherwise
+
+**Examples**:
+
+**100 Players** (Small Server):
+```hcl
+player_capacity = 100
+# Calculates: 1 vCPU, 2GB RAM, cache.t3.micro Redis, generalPurpose EFS, 1 NAT Gateway, no Global Accelerator
+# Estimated Cost: ~$120/month
+```
+
+**1,000 Players** (Medium Server):
+```hcl
+player_capacity = 1000
+# Calculates: 10 vCPU (rounded to 4096 units), 20GB RAM (rounded to 16384 MB), cache.t3.small Redis, generalPurpose EFS, 1 NAT Gateway, Global Accelerator enabled
+# Estimated Cost: ~$230/month
+```
+
+**10,000 Players** (Large Server):
+```hcl
+player_capacity = 10000
+# Calculates: 100 vCPU (multiple tasks), 200GB RAM, cache.r6g.large Redis, maxIO EFS, 2 NAT Gateways, Global Accelerator enabled
+# Estimated Cost: ~$1,200/month
+```
+
+**Scaling**:
+```hcl
+# Initial deployment
+player_capacity = 100
+
+# Scale up (zero-downtime)
+player_capacity = 1000
+terraform apply  # Resources scale automatically, data preserved
+```
+
+**Cost Estimation**:
+- View costs in `terraform plan` output (monthly_cost_* outputs)
+- Use standalone script: `python3 scripts/calculate-cost.py <player_capacity>`
+- JSON output: `python3 scripts/calculate-cost.py <player_capacity> --json`
+
+**Override Support**: Individual resource variables can override calculated values:
+```hcl
+player_capacity = 500
+task_cpu = 4096  # Override: Use 4 vCPU instead of calculated 5 vCPU
+# All other resources use calculated values
+```
+
+**Backward Compatibility**: Existing configurations without `player_capacity` continue to work unchanged. Set `player_capacity = null` or omit it to use manual resource specification.
+
+**Documentation**: See `docs/sizing-formulas.md` for detailed formulas and assumptions.
 
 ### Default Values Rationale
 

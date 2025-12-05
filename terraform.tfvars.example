@@ -1,6 +1,23 @@
 # Required: Docker image for Minecraft server
 container_image = "itzg/minecraft-server:latest"
 
+# Player Capacity-Based Auto-Sizing (NEW)
+# When player_capacity is set, all resource sizing is calculated automatically.
+# Individual resource variables can override calculated values if needed.
+player_capacity = 100  # Target concurrent players (100-50,000). Set to null to use manual resource specification.
+
+# Example: Scale to 1,000 players
+# player_capacity = 1000  # Will automatically calculate: 10 vCPU, 20GB RAM, cache.t3.small Redis, Global Accelerator enabled
+
+# Example: Scale to 10,000+ players (enterprise-grade)
+# player_capacity = 10000  # Will automatically calculate: 100 vCPU (multiple tasks), 200GB RAM, cache.r6g.large Redis, maxIO EFS, 2 NAT Gateways
+
+# Example: Override specific resources while using auto-sizing
+# player_capacity = 500
+# task_cpu = 4096  # Override: Use 4 vCPU instead of calculated 5 vCPU
+# redis_node_type = "cache.t3.medium"  # Override: Use larger Redis instance
+# # All other resources (memory, desired_count, EFS, NAT Gateway, Global Accelerator) use calculated values
+
 # Optional: Override defaults
 project_name    = "minecraft"  # Project name used for resource naming (defaults to "minecraft" for backward compatibility)
 aws_region      = "sa-east-1"
